@@ -34,9 +34,14 @@ import com.archieapps.fles.ui.components.FolderListItem
 import com.archieapps.fles.ui.components.IconButtonBox
 import com.archieapps.fles.ui.components.MessageList
 import com.archieapps.fles.ui.model.Channel
+import com.archieapps.fles.ui.model.Attachment
+import com.archieapps.fles.ui.model.PendingAttachment
 import com.archieapps.fles.ui.state.UiState
 import com.archieapps.fles.ui.theme.FlesTheme
+import com.archieapps.fles.data.repository.AttachmentIo
 import com.archieapps.fles.ui.viewmodel.ThreadUiState
+import com.archieapps.fles.ui.viewmodel.ThreadActionState
+import java.io.File
 
 @Composable
 fun MessagesScreen(state: UiState<List<Channel>>, openDrawer: () -> Unit, onThreadClick: (String) -> Unit) {
@@ -66,7 +71,28 @@ fun MessagesScreen(state: UiState<List<Channel>>, openDrawer: () -> Unit, onThre
 }
 
 @Composable
-fun ThreadScreen(state: UiState<ThreadUiState>, openDrawer: () -> Unit, onBack: () -> Unit) {
+fun ThreadScreen(
+    state: UiState<ThreadUiState>,
+    action: ThreadActionState,
+    channels: List<Channel>,
+    attachmentIo: AttachmentIo,
+    keyConfigured: Boolean,
+    openDrawer: () -> Unit,
+    onBack: () -> Unit,
+    onDeleteThread: () -> Unit,
+    onSend: (String, List<PendingAttachment>) -> Unit,
+    onCreateList: (String, List<String>) -> Unit,
+    onConfigureKey: () -> Unit,
+    onToggleFavorite: (String) -> Unit,
+    onDeleteMessage: (String) -> Unit,
+    onMoveMessage: (String, String) -> Unit,
+    onToggleListItem: (String, String) -> Unit,
+    onAddListItem: (String, String) -> Unit,
+    onUpdateListItem: (String, String, String) -> Unit,
+    onDeleteListItem: (String, String) -> Unit,
+    onReorderListItems: (String, List<String>) -> Unit,
+    onDownload: suspend (Attachment) -> File
+) {
     val density = LocalDensity.current
     var composerHeight by remember { mutableStateOf(0.dp) }
 
@@ -79,12 +105,23 @@ fun ThreadScreen(state: UiState<ThreadUiState>, openDrawer: () -> Unit, onBack: 
             is UiState.Error -> EmptyState(title = "Erro ao carregar", description = state.message, icon = Icons.Filled.ErrorOutline, modifier = Modifier.fillMaxSize())
             is UiState.Success -> {
                 Column(modifier = Modifier.fillMaxSize()) {
-                    ChatHeader(channel = state.data.channel, itemCount = state.data.messages.size, onMenuClick = openDrawer, onBack = onBack)
+                    ChatHeader(channel = state.data.channel, itemCount = state.data.messages.size, onMenuClick = openDrawer, onBack = onBack, onDeleteClick = onDeleteThread)
                     Box(modifier = Modifier.weight(1f)) {
                         MessageList(
                             messages = state.data.messages,
+                            folderId = state.data.channel.id,
+                            channels = channels,
                             modifier = Modifier.fillMaxSize(),
-                            bottomPadding = composerHeight + 16.dp
+                            bottomPadding = composerHeight + 16.dp,
+                            onToggleFavorite = onToggleFavorite,
+                            onDelete = onDeleteMessage,
+                            onMove = onMoveMessage,
+                            onToggleListItem = onToggleListItem,
+                            onAddListItem = onAddListItem,
+                            onUpdateListItem = onUpdateListItem,
+                            onDeleteListItem = onDeleteListItem,
+                            onReorderListItems = onReorderListItems,
+                            onDownload = onDownload
                         )
                     }
                 }
@@ -96,6 +133,13 @@ fun ThreadScreen(state: UiState<ThreadUiState>, openDrawer: () -> Unit, onBack: 
                         .imePadding()
                 ) {
                     Composer(
+                        folderId = state.data.channel.id,
+                        keyConfigured = keyConfigured,
+                        attachmentIo = attachmentIo,
+                        sending = action.sending,
+                        onSend = onSend,
+                        onCreateList = onCreateList,
+                        onConfigureKey = onConfigureKey,
                         modifier = Modifier.onSizeChanged {
                             composerHeight = with(density) { it.height.toDp() }
                         }

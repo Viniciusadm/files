@@ -13,6 +13,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import java.io.File
 
 class FilesViewModel(
     private val folderId: String?,
@@ -22,6 +23,8 @@ class FilesViewModel(
 ) : ViewModel() {
     private val _state = MutableStateFlow(FilesUiState(favoritesOnly = favoritesOnlyInitial, loading = true))
     val state: StateFlow<FilesUiState> = _state.asStateFlow()
+    private val _action = MutableStateFlow<FileActionState?>(null)
+    val action: StateFlow<FileActionState?> = _action.asStateFlow()
 
     init {
         load()
@@ -66,6 +69,14 @@ class FilesViewModel(
             }
         }
     }
+
+    fun clearAction() {
+        _action.value = null
+    }
+
+    suspend fun downloadToCache(file: FileItem): File {
+        return filesRepository.downloadToCache(file)
+    }
 }
 
 data class FilesUiState(
@@ -80,3 +91,8 @@ data class FilesUiState(
 ) {
     val isEmpty: Boolean = !loading && error == null && files.isEmpty()
 }
+
+data class FileActionState(
+    val message: String,
+    val isError: Boolean = false
+)

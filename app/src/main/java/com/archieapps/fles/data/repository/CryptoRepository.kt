@@ -53,6 +53,26 @@ class CryptoRepository(private val keyStorage: KeyStorage) {
         return "{\"version\":1,\"algorithm\":\"AES-256-GCM\",\"iv\":\"${encode(iv)}\",\"ciphertext\":\"${encode(ciphertext)}\"}"
     }
 
+    suspend fun encryptBytesForFile(bytes: ByteArray, fileName: String): EncryptedFile {
+        val key = decodeKey(keyStorage.getKey() ?: throw IllegalStateException("Chave E2EE não configurada."))
+        val iv = ByteArray(12)
+        random.nextBytes(iv)
+        val cipher = Cipher.getInstance("AES/GCM/NoPadding")
+        cipher.init(Cipher.ENCRYPT_MODE, SecretKeySpec(key, "AES"), GCMParameterSpec(128, iv))
+        val ciphertext = cipher.doFinal(bytes)
+        return EncryptedFile(iv + ciphertext, encryptString(fileName))
+    }
+
+    suspend fun decryptBytesFromFile(combined: ByteArray): ByteArray {
+        if (combined.size < 13) throw IllegalArgumentException("Arquivo criptografado inválido")
+        val key = decodeKey(keyStorage.getKey() ?: throw IllegalStateException("Chave E2EE não configurada."))
+        val iv = combined.copyOfRange(0, 12)
+        val ciphertext = combined.copyOfRange(12, combined.size)
+        val cipher = Cipher.getInstance("AES/GCM/NoPadding")
+        cipher.init(Cipher.DECRYPT_MODE, SecretKeySpec(key, "AES"), GCMParameterSpec(128, iv))
+        return cipher.doFinal(ciphertext)
+    }
+
     suspend fun tryDecryptString(value: String?): String {
         val text = value.orEmpty()
         if (text.isBlank()) return text
@@ -86,3 +106,8 @@ class CryptoRepository(private val keyStorage: KeyStorage) {
         return Regex("\"$key\"\\s*:\\s*\"([^\"]+)\"").find(json)?.groupValues?.getOrNull(1)
     }
 }
+
+data class EncryptedFile(
+    val bytes: ByteArray,
+    val fileNameEnvelope: String
+)

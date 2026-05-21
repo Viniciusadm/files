@@ -51,7 +51,8 @@ data class Channel(
 data class ListItem(
     val id: String,
     val text: String,
-    val checked: Boolean
+    val checked: Boolean,
+    val position: Int = 0
 )
 
 data class Attachment(
@@ -61,6 +62,10 @@ data class Attachment(
     val size: Long,
     val kind: FileKind,
     val createdAt: String,
+    val url: String,
+    val previewUrl: String? = null,
+    val compressed: Boolean = false,
+    val extension: String = "",
     val previewColor: Color? = null
 )
 
@@ -86,5 +91,20 @@ data class FileItem(
     val messageId: String,
     val isFavorite: Boolean,
     val createdAt: String,
+    val url: String,
+    val mimeType: String,
+    val compressed: Boolean,
+    val extension: String,
     val previewColor: Color? = null
+)
+
+data class PendingAttachment(
+    val uri: android.net.Uri,
+    val fileName: String,
+    val mimeType: String,
+    val size: Long,
+    val kind: FileKind,
+    val extension: String,
+    val isImage: Boolean,
+    val compress: Boolean = isImage
 )

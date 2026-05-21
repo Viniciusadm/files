@@ -11,6 +11,8 @@ import retrofit2.http.Part
 import retrofit2.http.PartMap
 import retrofit2.http.Path
 import retrofit2.http.POST
+import retrofit2.http.Url
+import okhttp3.ResponseBody
 
 interface ApiService {
     @POST("auth/login")
@@ -89,6 +91,9 @@ interface ApiService {
         @Path("messageId") messageId: String,
         @Path("itemId") itemId: String
     ): ApiEnvelope<Unit>
+
+    @GET
+    suspend fun download(@Url url: String): ResponseBody
 }
 
 data class ApiEnvelope<T>(
@@ -102,6 +107,10 @@ data class ApiEnvelope<T>(
 fun <T> ApiEnvelope<T>.requireBody(): T {
     if (success == false) throw ApiException(null, message ?: "Erro na requisição")
     return body ?: throw ApiException(null, message ?: "Resposta vazia do servidor")
+}
+
+fun ApiEnvelope<Unit>.requireSuccess() {
+    if (success == false) throw ApiException(null, message ?: "Erro na requisição")
 }
 
 data class LoginRequest(

@@ -2,6 +2,7 @@ package com.archieapps.fles.data.repository
 
 import com.archieapps.fles.ui.model.FileItem
 import com.archieapps.fles.ui.model.FileKind
+import java.io.File
 
 class FilesRepository(
     private val channelsRepository: ChannelsRepository,
@@ -28,5 +29,9 @@ class FilesRepository(
                     it.folderName.contains(query, ignoreCase = true)
             }
             .sortedByDescending { it.createdAt }
+    }
+
+    suspend fun downloadToCache(file: FileItem): File {
+        return messagesRepository.cachePlainFile(file.name, messagesRepository.downloadAttachment(file.url))
     }
 }

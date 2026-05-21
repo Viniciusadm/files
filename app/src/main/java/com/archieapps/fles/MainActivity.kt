@@ -9,11 +9,15 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.navigation.NavHostController
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
@@ -33,6 +37,7 @@ import com.archieapps.fles.ui.screens.ShareScreen
 import com.archieapps.fles.ui.screens.ThreadScreen
 import com.archieapps.fles.ui.state.UiState
 import com.archieapps.fles.ui.theme.FlesTheme
+import com.archieapps.fles.ui.components.openFile
 import com.archieapps.fles.ui.viewmodel.FilesViewModel
 import com.archieapps.fles.ui.viewmodel.KeyViewModel
 import com.archieapps.fles.ui.viewmodel.LoginViewModel
@@ -41,7 +46,10 @@ import com.archieapps.fles.ui.viewmodel.SearchViewModel
 import com.archieapps.fles.ui.viewmodel.SessionState
 import com.archieapps.fles.ui.viewmodel.SessionViewModel
 import com.archieapps.fles.ui.viewmodel.ShareViewModel
+import com.archieapps.fles.ui.viewmodel.SharePayload
 import com.archieapps.fles.ui.viewmodel.ThreadViewModel
+import kotlinx.coroutines.launch
+import androidx.compose.runtime.rememberCoroutineScope
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -49,15 +57,16 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         setContent {
             val appContainer = remember { AppContainer(applicationContext) }
+            val initialShare = remember { SharePayload.fromIntent(intent, appContainer.attachmentIo) }
             FlesTheme {
-                FlesApp(appContainer)
+                FlesApp(appContainer, initialShare)
             }
         }
     }
 }
 
 @Composable
-fun FlesApp(appContainer: AppContainer) {
+fun FlesApp(appContainer: AppContainer, initialShare: SharePayload?) {
     val sessionViewModel = remember { SessionViewModel(appContainer.authRepository) }
     val sessionState by sessionViewModel.state.collectAsState()
 
@@ -69,6 +78,7 @@ fun FlesApp(appContainer: AppContainer) {
         )
         SessionState.Authenticated -> AuthenticatedNavHost(
             appContainer = appContainer,
+            initialShare = initialShare,
             onLogout = sessionViewModel::logout
         )
     }
@@ -122,16 +132,18 @@ private fun AuthNavHost(
 @Composable
 private fun AuthenticatedNavHost(
     appContainer: AppContainer,
+    initialShare: SharePayload?,
     onLogout: () -> Unit
 ) {
     val navController = rememberNavController()
     val messagesViewModel = remember { MessagesViewModel(appContainer.channelsRepository) }
     val channelsState by messagesViewModel.state.collectAsState()
     val channels = (channelsState as? UiState.Success)?.data.orEmpty()
+    val createChannel: (String, String, String) -> Unit = { name, icon, color -> messagesViewModel.createChannel(name, icon, color) }
 
-    NavHost(navController = navController, startDestination = AppRoutes.Messages) {
+    NavHost(navController = navController, startDestination = if (initialShare != null) AppRoutes.Share else AppRoutes.Messages) {
         composable(AppRoutes.Messages) {
-            Shell(navController, MainSection.Messages, null, channels, onLogout) { openDrawer ->
+            Shell(navController, MainSection.Messages, null, channels, createChannel, onLogout) { openDrawer ->
                 MessagesScreen(
                     state = channelsState,
                     openDrawer = openDrawer,
@@ -148,11 +160,31 @@ private fun AuthenticatedNavHost(
                 ThreadViewModel(folderId, appContainer.channelsRepository, appContainer.messagesRepository)
             }
             val state by threadViewModel.state.collectAsState()
-            Shell(navController, MainSection.Messages, folderId, channels, onLogout) { openDrawer ->
+            val action by threadViewModel.action.collectAsState()
+            var keyConfigured by remember { mutableStateOf(false) }
+            LaunchedEffect(Unit) { keyConfigured = appContainer.cryptoRepository.hasKey() }
+            Shell(navController, MainSection.Messages, folderId, channels, createChannel, onLogout) { openDrawer ->
                 ThreadScreen(
                     state = state,
+                    action = action,
+                    channels = channels,
+                    attachmentIo = appContainer.attachmentIo,
+                    keyConfigured = keyConfigured,
                     openDrawer = openDrawer,
-                    onBack = { navController.navigate(AppRoutes.Messages) }
+                    onBack = { navController.navigate(AppRoutes.Messages) },
+                    onDeleteThread = { threadViewModel.deleteThread { navController.navigate(AppRoutes.Messages) } },
+                    onSend = { text, attachments -> threadViewModel.send(text, attachments) {} },
+                    onCreateList = { title, items -> threadViewModel.createChecklist(title, items) {} },
+                    onConfigureKey = { navController.navigate(AppRoutes.Key) },
+                    onToggleFavorite = threadViewModel::toggleFavorite,
+                    onDeleteMessage = threadViewModel::deleteMessage,
+                    onMoveMessage = threadViewModel::moveMessage,
+                    onToggleListItem = threadViewModel::toggleListItem,
+                    onAddListItem = threadViewModel::addListItem,
+                    onUpdateListItem = threadViewModel::updateListItem,
+                    onDeleteListItem = threadViewModel::deleteListItem,
+                    onReorderListItems = threadViewModel::reorderListItems,
+                    onDownload = threadViewModel::downloadToCache
                 )
             }
         }
@@ -161,14 +193,17 @@ private fun AuthenticatedNavHost(
                 FilesViewModel(null, false, appContainer.channelsRepository, appContainer.filesRepository)
             }
             val state by filesViewModel.state.collectAsState()
-            Shell(navController, MainSection.Files, null, channels, onLogout) { openDrawer ->
+            val context = LocalContext.current
+            val scope = rememberCoroutineScope()
+            Shell(navController, MainSection.Files, null, channels, createChannel, onLogout) { openDrawer ->
                 FilesScreen(
                     state = state,
                     openDrawer = openDrawer,
                     onQueryChange = filesViewModel::onQueryChange,
                     onModeChange = filesViewModel::onModeChange,
                     onFavoritesToggle = filesViewModel::onFavoritesToggle,
-                    onKindChange = filesViewModel::onKindChange
+                    onKindChange = filesViewModel::onKindChange,
+                    onFileClick = { file -> scope.launch { openFile(context, filesViewModel.downloadToCache(file), file.mimeType) } }
                 )
             }
         }
@@ -181,14 +216,17 @@ private fun AuthenticatedNavHost(
                 FilesViewModel(folderId, false, appContainer.channelsRepository, appContainer.filesRepository)
             }
             val state by filesViewModel.state.collectAsState()
-            Shell(navController, MainSection.Files, folderId, channels, onLogout) { openDrawer ->
+            val context = LocalContext.current
+            val scope = rememberCoroutineScope()
+            Shell(navController, MainSection.Files, folderId, channels, createChannel, onLogout) { openDrawer ->
                 FilesScreen(
                     state = state,
                     openDrawer = openDrawer,
                     onQueryChange = filesViewModel::onQueryChange,
                     onModeChange = filesViewModel::onModeChange,
                     onFavoritesToggle = filesViewModel::onFavoritesToggle,
-                    onKindChange = filesViewModel::onKindChange
+                    onKindChange = filesViewModel::onKindChange,
+                    onFileClick = { file -> scope.launch { openFile(context, filesViewModel.downloadToCache(file), file.mimeType) } }
                 )
             }
         }
@@ -197,7 +235,9 @@ private fun AuthenticatedNavHost(
                 FilesViewModel(null, true, appContainer.channelsRepository, appContainer.filesRepository)
             }
             val state by filesViewModel.state.collectAsState()
-            Shell(navController, MainSection.Favorites, null, channels, onLogout) { openDrawer ->
+            val context = LocalContext.current
+            val scope = rememberCoroutineScope()
+            Shell(navController, MainSection.Favorites, null, channels, createChannel, onLogout) { openDrawer ->
                 FilesScreen(
                     state = state,
                     openDrawer = openDrawer,
@@ -205,6 +245,7 @@ private fun AuthenticatedNavHost(
                     onModeChange = filesViewModel::onModeChange,
                     onFavoritesToggle = filesViewModel::onFavoritesToggle,
                     onKindChange = filesViewModel::onKindChange,
+                    onFileClick = { file -> scope.launch { openFile(context, filesViewModel.downloadToCache(file), file.mimeType) } },
                     favoritesOnlyInitial = true
                 )
             }
@@ -218,7 +259,7 @@ private fun AuthenticatedNavHost(
                 SearchViewModel(initialQuery, appContainer.messagesRepository)
             }
             val state by searchViewModel.state.collectAsState()
-            Shell(navController, MainSection.Search, null, channels, onLogout) { openDrawer ->
+            Shell(navController, MainSection.Search, null, channels, createChannel, onLogout) { openDrawer ->
                 SearchScreen(
                     state = state,
                     openDrawer = openDrawer,
@@ -230,7 +271,7 @@ private fun AuthenticatedNavHost(
         composable(AppRoutes.Key) {
             val keyViewModel = remember { KeyViewModel(appContainer.cryptoRepository) }
             val state by keyViewModel.state.collectAsState()
-            Shell(navController, MainSection.Key, null, channels, onLogout) { openDrawer ->
+            Shell(navController, MainSection.Key, null, channels, createChannel, onLogout) { openDrawer ->
                 KeyScreen(
                     state = state,
                     openDrawer = openDrawer,
@@ -242,14 +283,19 @@ private fun AuthenticatedNavHost(
             }
         }
         composable(AppRoutes.Share) {
-            val shareViewModel = remember { ShareViewModel(appContainer.channelsRepository) }
+            val shareViewModel = remember { ShareViewModel(appContainer.channelsRepository, appContainer.messagesRepository, initialShare) }
             val state by shareViewModel.state.collectAsState()
             ShareScreen(
                 state = state,
                 onQueryChange = shareViewModel::onQueryChange,
-                onSent = shareViewModel::markSent,
+                onSend = { channelId ->
+                    shareViewModel.sendTo(channelId) {
+                        navController.navigate(AppRoutes.thread(channelId))
+                    }
+                },
                 onClose = { navController.navigate(AppRoutes.Messages) },
-                onThreadClick = { navController.navigate(AppRoutes.thread(it)) }
+                onThreadClick = { navController.navigate(AppRoutes.thread(it)) },
+                onCreateChannel = createChannel
             )
         }
     }
@@ -261,6 +307,7 @@ private fun Shell(
     section: MainSection,
     activeFolderId: String?,
     channels: List<com.archieapps.fles.ui.model.Channel>,
+    onCreateChannel: (String, String, String) -> Unit,
     onLogout: () -> Unit,
     content: @Composable (openDrawer: () -> Unit) -> Unit
 ) {
@@ -275,6 +322,7 @@ private fun Shell(
         onNavigateFavorites = { navController.navigate(AppRoutes.Favorites) },
         onNavigateKey = { navController.navigate(AppRoutes.Key) },
         onNavigateSearch = { navController.navigate(AppRoutes.search(it)) },
+        onCreateChannel = onCreateChannel,
         onLogout = onLogout,
         content = content
     )

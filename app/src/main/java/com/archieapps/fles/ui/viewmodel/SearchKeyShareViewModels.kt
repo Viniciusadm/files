@@ -1,7 +1,10 @@
 package com.archieapps.fles.ui.viewmodel
 
+import android.content.Intent
+import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.archieapps.fles.data.repository.AttachmentIo
 import com.archieapps.fles.data.repository.ChannelsRepository
 import com.archieapps.fles.data.repository.CryptoRepository
 import com.archieapps.fles.data.repository.MessagesRepository
@@ -112,8 +115,12 @@ data class KeyUiState(
     val error: String? = null
 )
 
-class ShareViewModel(private val channelsRepository: ChannelsRepository) : ViewModel() {
-    private val _state = MutableStateFlow(ShareUiState(loading = true))
+class ShareViewModel(
+    private val channelsRepository: ChannelsRepository,
+    private val messagesRepository: MessagesRepository,
+    private val payload: SharePayload?
+) : ViewModel() {
+    private val _state = MutableStateFlow(ShareUiState(loading = true, summary = payload?.summary() ?: "Conteúdo compartilhado"))
     val state: StateFlow<ShareUiState> = _state.asStateFlow()
 
     init {
@@ -127,6 +134,25 @@ class ShareViewModel(private val channelsRepository: ChannelsRepository) : ViewM
 
     fun markSent() {
         _state.update { it.copy(toast = "Enviado!") }
+    }
+
+    fun sendTo(channelId: String, onDone: () -> Unit) {
+        val currentPayload = payload ?: return
+        viewModelScope.launch {
+            _state.update { it.copy(sending = true, toast = "Enviando...", error = null) }
+            runCatching {
+                messagesRepository.send(
+                    folderId = channelId,
+                    content = currentPayload.content(),
+                    attachments = currentPayload.attachments
+                )
+            }.onSuccess {
+                _state.update { it.copy(sending = false, toast = "Enviado!") }
+                onDone()
+            }.onFailure { error ->
+                _state.update { it.copy(sending = false, toast = null, error = error.userMessage()) }
+            }
+        }
     }
 
     private fun load() {
@@ -153,5 +179,46 @@ data class ShareUiState(
     val previewDescription: String? = null,
     val toast: String? = null,
     val loading: Boolean = false,
+    val sending: Boolean = false,
     val error: String? = null
 )
+
+data class SharePayload(
+    val text: String? = null,
+    val webUrl: String? = null,
+    val attachments: List<com.archieapps.fles.ui.model.PendingAttachment> = emptyList()
+) {
+    fun content(): String {
+        return listOfNotNull(text, webUrl?.takeIf { it != text }).joinToString("\n").trim()
+    }
+
+    fun summary(): String {
+        return when {
+            attachments.size == 1 -> attachments.first().fileName
+            attachments.size > 1 -> "${attachments.size} arquivos"
+            !webUrl.isNullOrBlank() -> webUrl
+            !text.isNullOrBlank() -> text
+            else -> "Conteúdo compartilhado"
+        }
+    }
+
+    companion object {
+        fun fromIntent(intent: Intent?, attachmentIo: AttachmentIo): SharePayload? {
+            if (intent == null) return null
+            val action = intent.action ?: return null
+            if (action != Intent.ACTION_SEND && action != Intent.ACTION_SEND_MULTIPLE) return null
+            val text = intent.getStringExtra(Intent.EXTRA_TEXT)
+            val subject = intent.getStringExtra(Intent.EXTRA_SUBJECT)
+            val uris = mutableListOf<Uri>()
+            intent.getParcelableExtra<Uri>(Intent.EXTRA_STREAM)?.let { uris.add(it) }
+            intent.clipData?.let { clip ->
+                repeat(clip.itemCount) { index ->
+                    clip.getItemAt(index).uri?.let { uris.add(it) }
+                }
+            }
+            val attachments = uris.distinct().map { attachmentIo.pendingFromUri(it) }
+            val payload = SharePayload(text = text ?: subject, webUrl = null, attachments = attachments)
+            return if (payload.text.isNullOrBlank() && payload.attachments.isEmpty()) null else payload
+        }
+    }
+}

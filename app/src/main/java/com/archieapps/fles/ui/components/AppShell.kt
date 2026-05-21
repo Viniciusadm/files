@@ -2,6 +2,7 @@ package com.archieapps.fles.ui.components
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -34,13 +35,18 @@ import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.DrawerValue
 import androidx.compose.material3.Icon
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ModalDrawerSheet
 import androidx.compose.material3.ModalNavigationDrawer
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberDrawerState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -52,6 +58,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.archieapps.fles.ui.model.Channel
 import com.archieapps.fles.ui.theme.FlesTheme
+import com.archieapps.fles.ui.theme.withAlpha
 import kotlinx.coroutines.launch
 
 enum class MainSection {
@@ -75,6 +82,7 @@ fun AppShell(
     onNavigateFavorites: () -> Unit,
     onNavigateKey: () -> Unit,
     onNavigateSearch: (String) -> Unit,
+    onCreateChannel: (String, String, String) -> Unit,
     onLogout: () -> Unit,
     content: @Composable (openDrawer: () -> Unit) -> Unit
 ) {
@@ -119,6 +127,7 @@ fun AppShell(
                         scope.launch { drawerState.close() }
                         onNavigateSearch(it)
                     },
+                    onCreateChannel = onCreateChannel,
                     onLogout = onLogout
                 )
             }
@@ -148,9 +157,11 @@ fun Sidebar(
     onNavigateFavorites: () -> Unit,
     onNavigateKey: () -> Unit,
     onNavigateSearch: (String) -> Unit,
+    onCreateChannel: (String, String, String) -> Unit,
     onLogout: () -> Unit
 ) {
     val colors = FlesTheme.colors
+    var createOpen by remember { mutableStateOf(false) }
     Column(modifier = Modifier.fillMaxHeight().background(colors.sidebar)) {
         Row(
             modifier = Modifier
@@ -173,7 +184,7 @@ fun Sidebar(
                 Text("usuario@exemplo.com", color = colors.mutedForeground, fontSize = 12.sp, maxLines = 1)
             }
             IconButtonBox(Icons.Filled.Key, onClick = onNavigateKey, tint = colors.sidebarForeground)
-            IconButtonBox(Icons.Filled.Add, onClick = {}, tint = colors.sidebarForeground)
+            IconButtonBox(Icons.Filled.Add, onClick = { createOpen = true }, tint = colors.sidebarForeground)
         }
         Box(modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp)) {
             var query = androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf("") }
@@ -243,7 +254,59 @@ fun Sidebar(
                 Icon(Icons.Filled.Logout, null, modifier = Modifier.size(18.dp), tint = colors.mutedForeground)
             }
         }
+        if (createOpen) {
+            CreateChannelDialog(
+                onClose = { createOpen = false },
+                onCreate = { name, icon, color ->
+                    onCreateChannel(name, icon, color)
+                    createOpen = false
+                }
+            )
+        }
     }
+}
+
+@Composable
+private fun CreateChannelDialog(onClose: () -> Unit, onCreate: (String, String, String) -> Unit) {
+    val colors = FlesTheme.colors
+    var name by remember { mutableStateOf("") }
+    var icon by remember { mutableStateOf("Folder") }
+    var color by remember { mutableStateOf("#3390ec") }
+    val icons = listOf("Folder", "Inbox", "Briefcase", "GraduationCap", "Image", "Star")
+    val colorsList = listOf("#3390ec", "#22c55e", "#eab308", "#ef4444", "#8b5cf6", "#06b6d4")
+    AlertDialog(
+        onDismissRequest = onClose,
+        title = { Text("Nova pasta") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                AppInput(name, { name = it }, "Ex.: Receitas")
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    icons.forEach { item ->
+                        IconButtonBox(
+                            icon = folderIcon(item),
+                            onClick = { icon = item },
+                            background = if (icon == item) colors.primary.withAlpha(0.12f) else Color.Transparent,
+                            tint = if (icon == item) colors.primary else colors.mutedForeground
+                        )
+                    }
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    colorsList.forEach { item ->
+                        Box(
+                            modifier = Modifier
+                                .size(32.dp)
+                                .clip(androidx.compose.foundation.shape.CircleShape)
+                                .background(parseHexColor(item))
+                                .border(BorderStroke(if (color == item) 3.dp else 0.dp, colors.foreground), androidx.compose.foundation.shape.CircleShape)
+                                .clickable { color = item }
+                        )
+                    }
+                }
+            }
+        },
+        confirmButton = { AppButton("Criar pasta", enabled = name.trim().isNotBlank(), onClick = { onCreate(name, icon, color) }) },
+        dismissButton = { AppButton("Cancelar", variant = AppButtonVariant.Ghost, onClick = onClose) }
+    )
 }
 
 @Composable
@@ -268,4 +331,8 @@ private fun NavChip(
         Spacer(Modifier.width(6.dp))
         Text(label, color = if (active) colors.sidebarForeground else colors.mutedForeground, fontSize = 12.sp, fontWeight = FontWeight.Medium, maxLines = 1)
     }
+}
+
+private fun parseHexColor(value: String): Color {
+    return runCatching { Color(("FF" + value.removePrefix("#")).toLong(16)) }.getOrDefault(Color(0xFF3390EC))
 }

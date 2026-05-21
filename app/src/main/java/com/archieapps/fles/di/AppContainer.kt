@@ -4,6 +4,7 @@ import android.content.Context
 import com.archieapps.fles.data.local.KeyStorage
 import com.archieapps.fles.data.remote.ApiClient
 import com.archieapps.fles.data.repository.AuthRepository
+import com.archieapps.fles.data.repository.AttachmentIo
 import com.archieapps.fles.data.repository.ChannelsRepository
 import com.archieapps.fles.data.repository.CryptoRepository
 import com.archieapps.fles.data.repository.FilesRepository
@@ -11,6 +12,7 @@ import com.archieapps.fles.data.repository.MessagesRepository
 
 class AppContainer(context: Context) {
     private val apiClient = ApiClient(context.applicationContext)
+    val attachmentIo = AttachmentIo(context.applicationContext)
     val cryptoRepository = CryptoRepository(KeyStorage(context.applicationContext))
 
     val authRepository = AuthRepository(
@@ -24,7 +26,8 @@ class AppContainer(context: Context) {
     val messagesRepository = MessagesRepository(
         apiService = apiClient.apiService,
         cryptoRepository = cryptoRepository,
-        channelsRepository = channelsRepository
+        channelsRepository = channelsRepository,
+        attachmentIo = attachmentIo
     )
     val filesRepository = FilesRepository(
         channelsRepository = channelsRepository,

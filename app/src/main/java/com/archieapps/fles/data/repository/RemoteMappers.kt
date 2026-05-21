@@ -45,7 +45,8 @@ suspend fun RemoteListItem.toUi(cryptoRepository: CryptoRepository): ListItem {
     return ListItem(
         id = id.orEmpty(),
         text = cryptoRepository.tryDecryptString(text),
-        checked = isChecked.asBoolean()
+        checked = isChecked.asBoolean(),
+        position = position.asInt()
     )
 }
 
@@ -57,6 +58,10 @@ suspend fun RemoteAttachment.toUi(cryptoRepository: CryptoRepository): Attachmen
         size = size.asLong(),
         kind = fileKind.toFileKind(mimeType, fileName, extension),
         createdAt = createdAt.orEmpty(),
+        url = url.orEmpty(),
+        previewUrl = previewUrl,
+        compressed = compressed.asBoolean(),
+        extension = extension.orEmpty(),
         previewColor = if (fileKind == "image") Color(0xFFDBEAFE) else null
     )
 }
@@ -73,6 +78,10 @@ fun Message.toFileItem(channel: Channel): List<FileItem> {
             messageId = id,
             isFavorite = isFavorite,
             createdAt = it.createdAt,
+            url = it.url,
+            mimeType = it.mimeType,
+            compressed = it.compressed,
+            extension = it.extension,
             previewColor = it.previewColor
         )
     }
@@ -145,5 +154,13 @@ private fun Any?.asLong(): Long {
         is Number -> toLong()
         is String -> toLongOrNull() ?: 0L
         else -> 0L
+    }
+}
+
+private fun Any?.asInt(): Int {
+    return when (this) {
+        is Number -> toInt()
+        is String -> toIntOrNull() ?: 0
+        else -> 0
     }
 }

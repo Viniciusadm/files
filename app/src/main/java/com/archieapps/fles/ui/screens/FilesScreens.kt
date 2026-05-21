@@ -50,6 +50,7 @@ fun FilesScreen(
     onModeChange: (FilesViewMode) -> Unit,
     onFavoritesToggle: () -> Unit,
     onKindChange: (com.archieapps.fles.ui.model.FileKind?) -> Unit,
+    onFileClick: (com.archieapps.fles.ui.model.FileItem) -> Unit,
     favoritesOnlyInitial: Boolean = false
 ) {
     FilesScaffold(
@@ -59,6 +60,7 @@ fun FilesScreen(
         onModeChange = onModeChange,
         onFavoritesToggle = onFavoritesToggle,
         onKindChange = onKindChange,
+        onFileClick = onFileClick,
         emptyTitle = when {
             favoritesOnlyInitial -> "Sem favoritos"
             state.folder != null -> "Sem arquivos nesta pasta"
@@ -75,6 +77,7 @@ private fun FilesScaffold(
     onModeChange: (FilesViewMode) -> Unit,
     onFavoritesToggle: () -> Unit,
     onKindChange: (com.archieapps.fles.ui.model.FileKind?) -> Unit,
+    onFileClick: (com.archieapps.fles.ui.model.FileItem) -> Unit,
     emptyTitle: String
 ) {
     val colors = FlesTheme.colors
@@ -108,13 +111,13 @@ private fun FilesScaffold(
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 items(state.files, key = { it.id }) {
-                    FileGridCard(file = it)
+                    FileGridCard(file = it, onClick = { onFileClick(it) })
                 }
             }
         } else {
             LazyColumn(modifier = Modifier.fillMaxSize()) {
                 items(state.files, key = { it.id }) {
-                    FileListRow(file = it)
+                    FileListRow(file = it, onClick = { onFileClick(it) })
                 }
             }
         }

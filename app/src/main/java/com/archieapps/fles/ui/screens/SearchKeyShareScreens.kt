@@ -35,9 +35,14 @@ import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.Icon
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -189,11 +194,13 @@ fun KeyScreen(
 fun ShareScreen(
     state: ShareUiState,
     onQueryChange: (String) -> Unit,
-    onSent: () -> Unit,
+    onSend: (String) -> Unit,
     onClose: () -> Unit,
-    onThreadClick: (String) -> Unit
+    onThreadClick: (String) -> Unit,
+    onCreateChannel: (String, String, String) -> Unit
 ) {
     val colors = FlesTheme.colors
+    var createOpen by remember { mutableStateOf(false) }
     Box(modifier = Modifier.fillMaxSize().background(colors.background).safeDrawingPadding()) {
         Column(modifier = Modifier.fillMaxSize()) {
             Row(
@@ -208,18 +215,29 @@ fun ShareScreen(
                     Text("Enviar para…", color = colors.foreground, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
                     Text(state.summary, color = colors.mutedForeground, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
-                IconButtonBox(Icons.Filled.Add, onClick = {}, size = 40.dp, tint = colors.primary)
+                IconButtonBox(Icons.Filled.Add, onClick = { createOpen = true }, size = 40.dp, tint = colors.primary)
+            }
+            if (state.error != null) {
+                Text(state.error, modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp), color = colors.destructive, fontSize = 12.sp)
             }
             LinkPreviewCard(state.previewSite, state.previewTitle, state.previewDescription)
             AppInput(state.query, onQueryChange, "Buscar pasta", leadingIcon = Icons.Filled.Search, modifier = Modifier.fillMaxWidth().padding(12.dp))
             LazyColumn(modifier = Modifier.fillMaxSize().padding(horizontal = 8.dp)) {
                 items(state.channels, key = { it.id }) { channel ->
                     FolderListItem(channel, active = false, onClick = {
-                        onSent()
-                        onThreadClick(channel.id)
+                        onSend(channel.id)
                     })
                 }
             }
+        }
+        if (createOpen) {
+            ShareCreateChannelDialog(
+                onClose = { createOpen = false },
+                onCreate = { name, icon, color ->
+                    onCreateChannel(name, icon, color)
+                    createOpen = false
+                }
+            )
         }
         if (state.toast != null) {
             Surface(
@@ -228,12 +246,32 @@ fun ShareScreen(
                     .fillMaxWidth()
                     .padding(16.dp),
                 shape = RoundedCornerShape(FlesTheme.radius.lg),
-                color = colors.primary
+                color = if (state.error != null) colors.destructive else colors.primary
             ) {
-                Text(state.toast, modifier = Modifier.padding(12.dp), color = colors.primaryForeground, fontWeight = FontWeight.SemiBold)
+                Row(modifier = Modifier.padding(12.dp), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
+                    if (state.sending) {
+                        CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp, color = colors.primaryForeground)
+                        Spacer(Modifier.width(8.dp))
+                    }
+                    Text(state.toast, color = colors.primaryForeground, fontWeight = FontWeight.SemiBold)
+                }
             }
         }
     }
+}
+
+@Composable
+private fun ShareCreateChannelDialog(onClose: () -> Unit, onCreate: (String, String, String) -> Unit) {
+    val colors = FlesTheme.colors
+    var name by remember { mutableStateOf("") }
+    AlertDialog(
+        onDismissRequest = onClose,
+        title = { Text("Nova pasta") },
+        text = { AppInput(name, { name = it }, "Ex.: Receitas") },
+        confirmButton = { AppButton("Criar pasta", enabled = name.trim().isNotBlank(), onClick = { onCreate(name, "Folder", "#3390ec") }) },
+        dismissButton = { AppButton("Cancelar", variant = AppButtonVariant.Ghost, onClick = onClose) },
+        containerColor = colors.background
+    )
 }
 
 @Composable
