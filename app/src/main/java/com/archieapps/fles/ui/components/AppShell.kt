@@ -29,6 +29,7 @@ import androidx.compose.material.icons.filled.ChatBubbleOutline
 import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.Key
 import androidx.compose.material.icons.filled.Message
+import androidx.compose.material.icons.filled.Logout
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.DrawerValue
@@ -49,8 +50,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.archieapps.fles.ui.model.MockChannel
-import com.archieapps.fles.ui.model.MockData
+import com.archieapps.fles.ui.model.Channel
 import com.archieapps.fles.ui.theme.FlesTheme
 import kotlinx.coroutines.launch
 
@@ -67,6 +67,7 @@ enum class MainSection {
 fun AppShell(
     section: MainSection,
     activeFolderId: String?,
+    channels: List<Channel>,
     onNavigateMessages: () -> Unit,
     onNavigateThread: (String) -> Unit,
     onNavigateFiles: () -> Unit,
@@ -74,6 +75,7 @@ fun AppShell(
     onNavigateFavorites: () -> Unit,
     onNavigateKey: () -> Unit,
     onNavigateSearch: (String) -> Unit,
+    onLogout: () -> Unit,
     content: @Composable (openDrawer: () -> Unit) -> Unit
 ) {
     val drawerState = rememberDrawerState(DrawerValue.Closed)
@@ -88,6 +90,7 @@ fun AppShell(
                 Sidebar(
                     section = section,
                     activeFolderId = activeFolderId,
+                    channels = channels,
                     onNavigateMessages = {
                         scope.launch { drawerState.close() }
                         onNavigateMessages()
@@ -115,7 +118,8 @@ fun AppShell(
                     onNavigateSearch = {
                         scope.launch { drawerState.close() }
                         onNavigateSearch(it)
-                    }
+                    },
+                    onLogout = onLogout
                 )
             }
         }
@@ -136,13 +140,15 @@ fun AppShell(
 fun Sidebar(
     section: MainSection,
     activeFolderId: String?,
+    channels: List<Channel>,
     onNavigateMessages: () -> Unit,
     onNavigateThread: (String) -> Unit,
     onNavigateFiles: () -> Unit,
     onNavigateFolderFiles: (String) -> Unit,
     onNavigateFavorites: () -> Unit,
     onNavigateKey: () -> Unit,
-    onNavigateSearch: (String) -> Unit
+    onNavigateSearch: (String) -> Unit,
+    onLogout: () -> Unit
 ) {
     val colors = FlesTheme.colors
     Column(modifier = Modifier.fillMaxHeight().background(colors.sidebar)) {
@@ -199,7 +205,7 @@ fun Sidebar(
             modifier = Modifier.weight(1f).padding(horizontal = 8.dp, vertical = 8.dp),
             verticalArrangement = Arrangement.spacedBy(2.dp)
         ) {
-            items(MockData.channels, key = { it.id }) { channel ->
+            items(channels, key = { it.id }) { channel ->
                 FolderListItem(
                     channel = channel,
                     active = activeFolderId == channel.id,
@@ -220,7 +226,7 @@ fun Sidebar(
             border = BorderStroke(0.dp, Color.Transparent)
         ) {
             Row(
-                modifier = Modifier.clickable(onClick = {}).padding(8.dp),
+                modifier = Modifier.clickable(onClick = onLogout).padding(8.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Box(
@@ -234,6 +240,7 @@ fun Sidebar(
                     Text("usuario", color = colors.sidebarForeground, fontSize = 14.sp, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     Text("usuario@exemplo.com", color = colors.mutedForeground, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
+                Icon(Icons.Filled.Logout, null, modifier = Modifier.size(18.dp), tint = colors.mutedForeground)
             }
         }
     }

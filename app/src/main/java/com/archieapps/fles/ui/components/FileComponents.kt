@@ -50,7 +50,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.archieapps.fles.ui.model.FileKind
-import com.archieapps.fles.ui.model.MockFile
+import com.archieapps.fles.ui.model.FileItem
 import com.archieapps.fles.ui.theme.FlesTheme
 import com.archieapps.fles.ui.theme.withAlpha
 
@@ -169,7 +169,7 @@ fun FilesToolbar(
 }
 
 @Composable
-fun FileGridCard(file: MockFile, modifier: Modifier = Modifier, onClick: () -> Unit = {}) {
+fun FileGridCard(file: FileItem, modifier: Modifier = Modifier, onClick: () -> Unit = {}) {
     val colors = FlesTheme.colors
     val style = kindStyle(file.kind)
     Column(
@@ -228,7 +228,7 @@ fun FileGridCard(file: MockFile, modifier: Modifier = Modifier, onClick: () -> U
 }
 
 @Composable
-fun FileListRow(file: MockFile, modifier: Modifier = Modifier, onClick: () -> Unit = {}) {
+fun FileListRow(file: FileItem, modifier: Modifier = Modifier, onClick: () -> Unit = {}) {
     val colors = FlesTheme.colors
     Row(
         modifier = modifier

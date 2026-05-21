@@ -13,8 +13,10 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.Message
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -31,11 +33,13 @@ import com.archieapps.fles.ui.components.EmptyState
 import com.archieapps.fles.ui.components.FolderListItem
 import com.archieapps.fles.ui.components.IconButtonBox
 import com.archieapps.fles.ui.components.MessageList
-import com.archieapps.fles.ui.model.MockData
+import com.archieapps.fles.ui.model.Channel
+import com.archieapps.fles.ui.state.UiState
 import com.archieapps.fles.ui.theme.FlesTheme
+import com.archieapps.fles.ui.viewmodel.ThreadUiState
 
 @Composable
-fun MessagesScreen(openDrawer: () -> Unit, onThreadClick: (String) -> Unit) {
+fun MessagesScreen(state: UiState<List<Channel>>, openDrawer: () -> Unit, onThreadClick: (String) -> Unit) {
     val colors = FlesTheme.colors
     Column(modifier = Modifier.fillMaxSize().background(colors.background)) {
         androidx.compose.foundation.layout.Row(
@@ -46,44 +50,58 @@ fun MessagesScreen(openDrawer: () -> Unit, onThreadClick: (String) -> Unit) {
         ) {
             IconButtonBox(Icons.Filled.Menu, onClick = openDrawer)
         }
-        LazyColumn(modifier = Modifier.fillMaxSize().padding(horizontal = 8.dp, vertical = 8.dp)) {
-            items(MockData.channels, key = { it.id }) {
-                FolderListItem(channel = it, active = false, onClick = { onThreadClick(it.id) })
+        when (state) {
+            UiState.Loading -> Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                CircularProgressIndicator(color = colors.primary)
+            }
+            UiState.Empty -> EmptyState(title = "Sem conversas", description = null, icon = Icons.Filled.Message, modifier = Modifier.fillMaxSize())
+            is UiState.Error -> EmptyState(title = "Erro ao carregar", description = state.message, icon = Icons.Filled.ErrorOutline, modifier = Modifier.fillMaxSize())
+            is UiState.Success -> LazyColumn(modifier = Modifier.fillMaxSize().padding(horizontal = 8.dp, vertical = 8.dp)) {
+                items(state.data, key = { it.id }) {
+                    FolderListItem(channel = it, active = false, onClick = { onThreadClick(it.id) })
+                }
             }
         }
     }
 }
 
 @Composable
-fun ThreadScreen(folderId: String, openDrawer: () -> Unit, onBack: () -> Unit) {
-    val channel = MockData.channels.firstOrNull { it.id == folderId } ?: MockData.channels.first()
-    val messages = MockData.messages.filter { it.folderId == channel.id }
+fun ThreadScreen(state: UiState<ThreadUiState>, openDrawer: () -> Unit, onBack: () -> Unit) {
     val density = LocalDensity.current
     var composerHeight by remember { mutableStateOf(0.dp) }
 
     Box(modifier = Modifier.fillMaxSize().background(FlesTheme.colors.chatBg)) {
-        Column(modifier = Modifier.fillMaxSize()) {
-            ChatHeader(channel = channel, itemCount = messages.size, onMenuClick = openDrawer, onBack = onBack)
-            Box(modifier = Modifier.weight(1f)) {
-                MessageList(
-                    messages = messages,
-                    modifier = Modifier.fillMaxSize(),
-                    bottomPadding = composerHeight + 16.dp
-                )
+        when (state) {
+            UiState.Loading -> Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                CircularProgressIndicator(color = FlesTheme.colors.primary)
             }
-        }
-        Box(
-            modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .fillMaxWidth()
-                .navigationBarsPadding()
-                .imePadding()
-        ) {
-            Composer(
-                modifier = Modifier.onSizeChanged {
-                    composerHeight = with(density) { it.height.toDp() }
+            UiState.Empty -> EmptyThreadScreen()
+            is UiState.Error -> EmptyState(title = "Erro ao carregar", description = state.message, icon = Icons.Filled.ErrorOutline, modifier = Modifier.fillMaxSize())
+            is UiState.Success -> {
+                Column(modifier = Modifier.fillMaxSize()) {
+                    ChatHeader(channel = state.data.channel, itemCount = state.data.messages.size, onMenuClick = openDrawer, onBack = onBack)
+                    Box(modifier = Modifier.weight(1f)) {
+                        MessageList(
+                            messages = state.data.messages,
+                            modifier = Modifier.fillMaxSize(),
+                            bottomPadding = composerHeight + 16.dp
+                        )
+                    }
                 }
-            )
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .fillMaxWidth()
+                        .navigationBarsPadding()
+                        .imePadding()
+                ) {
+                    Composer(
+                        modifier = Modifier.onSizeChanged {
+                            composerHeight = with(density) { it.height.toDp() }
+                        }
+                    )
+                }
+            }
         }
     }
 }

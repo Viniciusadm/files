@@ -15,10 +15,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Key
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
@@ -31,13 +27,17 @@ import com.archieapps.fles.ui.components.AppCard
 import com.archieapps.fles.ui.components.AppInput
 import com.archieapps.fles.ui.theme.FlesTheme
 import com.archieapps.fles.ui.theme.withAlpha
+import com.archieapps.fles.ui.viewmodel.LoginUiState
 
 @Composable
-fun LoginScreen(onEnter: () -> Unit, onKeyClick: () -> Unit) {
+fun LoginScreen(
+    state: LoginUiState,
+    onEmailChange: (String) -> Unit,
+    onPasswordChange: (String) -> Unit,
+    onLoginClick: () -> Unit,
+    onKeyClick: () -> Unit
+) {
     val colors = FlesTheme.colors
-    var email by remember { mutableStateOf("") }
-    var password by remember { mutableStateOf("") }
-    var error by remember { mutableStateOf<String?>(null) }
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -60,25 +60,20 @@ fun LoginScreen(onEnter: () -> Unit, onKeyClick: () -> Unit) {
             Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(16.dp)) {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("Email", color = colors.foreground, fontSize = 14.sp, fontWeight = FontWeight.Medium)
-                    AppInput(email, { email = it }, "voce@exemplo.com")
+                    AppInput(state.email, onEmailChange, "email@email.com")
                 }
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("Senha", color = colors.foreground, fontSize = 14.sp, fontWeight = FontWeight.Medium)
-                    AppInput(password, { password = it }, "", visualTransformation = PasswordVisualTransformation())
+                    AppInput(state.password, onPasswordChange, "password", visualTransformation = PasswordVisualTransformation())
                 }
-                if (error != null) {
-                    Text(error ?: "", color = colors.destructive, fontSize = 12.sp)
+                if (state.error != null) {
+                    Text(state.error, color = colors.destructive, fontSize = 12.sp)
                 }
                 AppButton(
                     text = "Entrar",
-                    onClick = {
-                        if (email.trim().isEmpty() || password.isEmpty()) {
-                            error = "Informe email e senha"
-                        } else {
-                            error = null
-                            onEnter()
-                        }
-                    },
+                    onClick = onLoginClick,
+                    loading = state.loading,
+                    enabled = !state.loading,
                     modifier = Modifier.fillMaxWidth()
                 )
             }

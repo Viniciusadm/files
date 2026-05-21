@@ -17,15 +17,13 @@ import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ChevronRight
+import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material3.Icon
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
@@ -40,26 +38,30 @@ import com.archieapps.fles.ui.components.FilesViewMode
 import com.archieapps.fles.ui.components.FolderAvatar
 import com.archieapps.fles.ui.components.IconButtonBox
 import com.archieapps.fles.ui.components.folderIcon
-import com.archieapps.fles.ui.model.FileKind
-import com.archieapps.fles.ui.model.MockChannel
-import com.archieapps.fles.ui.model.MockData
-import com.archieapps.fles.ui.model.MockFile
+import com.archieapps.fles.ui.model.Channel
 import com.archieapps.fles.ui.theme.FlesTheme
+import com.archieapps.fles.ui.viewmodel.FilesUiState
 
 @Composable
-fun FilesScreen(openDrawer: () -> Unit, folderId: String? = null, favoritesOnlyInitial: Boolean = false) {
-    val folder = folderId?.let { id -> MockData.channels.firstOrNull { it.id == id } }
-    val baseFiles = MockData.files.filter { file ->
-        (folder == null || file.folderId == folder.id)
-    }
+fun FilesScreen(
+    state: FilesUiState,
+    openDrawer: () -> Unit,
+    onQueryChange: (String) -> Unit,
+    onModeChange: (FilesViewMode) -> Unit,
+    onFavoritesToggle: () -> Unit,
+    onKindChange: (com.archieapps.fles.ui.model.FileKind?) -> Unit,
+    favoritesOnlyInitial: Boolean = false
+) {
     FilesScaffold(
         openDrawer = openDrawer,
-        folder = folder,
-        files = baseFiles,
-        favoritesOnlyInitial = favoritesOnlyInitial,
+        state = state,
+        onQueryChange = onQueryChange,
+        onModeChange = onModeChange,
+        onFavoritesToggle = onFavoritesToggle,
+        onKindChange = onKindChange,
         emptyTitle = when {
             favoritesOnlyInitial -> "Sem favoritos"
-            folder != null -> "Sem arquivos nesta pasta"
+            state.folder != null -> "Sem arquivos nesta pasta"
             else -> "Sem arquivos por aqui"
         }
     )
@@ -68,37 +70,36 @@ fun FilesScreen(openDrawer: () -> Unit, folderId: String? = null, favoritesOnlyI
 @Composable
 private fun FilesScaffold(
     openDrawer: () -> Unit,
-    folder: MockChannel?,
-    files: List<MockFile>,
-    favoritesOnlyInitial: Boolean,
+    state: FilesUiState,
+    onQueryChange: (String) -> Unit,
+    onModeChange: (FilesViewMode) -> Unit,
+    onFavoritesToggle: () -> Unit,
+    onKindChange: (com.archieapps.fles.ui.model.FileKind?) -> Unit,
     emptyTitle: String
 ) {
     val colors = FlesTheme.colors
-    var query by remember { mutableStateOf("") }
-    var mode by remember { mutableStateOf(FilesViewMode.Grid) }
-    var favoritesOnly by remember { mutableStateOf(favoritesOnlyInitial) }
-    var activeKind by remember { mutableStateOf<FileKind?>(null) }
-    val filtered = files
-        .filter { !favoritesOnly || it.isFavorite }
-        .filter { activeKind == null || it.kind == activeKind }
-        .filter { query.isBlank() || it.name.contains(query, ignoreCase = true) || it.folderName.contains(query, ignoreCase = true) }
-        .sortedByDescending { it.createdAt }
 
     Column(modifier = Modifier.fillMaxSize().background(colors.background)) {
-        FilesHeader(openDrawer = openDrawer, folder = folder)
+        FilesHeader(openDrawer = openDrawer, folder = state.folder)
         FilesToolbar(
-            query = query,
-            onQueryChange = { query = it },
-            mode = mode,
-            onModeChange = { mode = it },
-            favoritesOnly = favoritesOnly,
-            onFavoritesToggle = { favoritesOnly = !favoritesOnly },
-            activeKind = activeKind,
-            onKindChange = { activeKind = it }
+            query = state.query,
+            onQueryChange = onQueryChange,
+            mode = state.mode,
+            onModeChange = onModeChange,
+            favoritesOnly = state.favoritesOnly,
+            onFavoritesToggle = onFavoritesToggle,
+            activeKind = state.activeKind,
+            onKindChange = onKindChange
         )
-        if (filtered.isEmpty()) {
+        if (state.loading) {
+            androidx.compose.foundation.layout.Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                CircularProgressIndicator(color = colors.primary)
+            }
+        } else if (state.error != null) {
+            EmptyState(title = "Erro ao carregar", description = state.error, icon = Icons.Filled.ErrorOutline, modifier = Modifier.fillMaxSize())
+        } else if (state.files.isEmpty()) {
             EmptyState(title = emptyTitle, description = null, icon = Icons.Filled.FolderOpen, modifier = Modifier.fillMaxSize())
-        } else if (mode == FilesViewMode.Grid) {
+        } else if (state.mode == FilesViewMode.Grid) {
             LazyVerticalGrid(
                 columns = GridCells.Fixed(2),
                 modifier = Modifier.fillMaxSize(),
@@ -106,13 +107,13 @@ private fun FilesScaffold(
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                items(filtered, key = { it.id }) {
+                items(state.files, key = { it.id }) {
                     FileGridCard(file = it)
                 }
             }
         } else {
             LazyColumn(modifier = Modifier.fillMaxSize()) {
-                items(filtered, key = { it.id }) {
+                items(state.files, key = { it.id }) {
                     FileListRow(file = it)
                 }
             }
@@ -121,7 +122,7 @@ private fun FilesScaffold(
 }
 
 @Composable
-private fun FilesHeader(openDrawer: () -> Unit, folder: MockChannel?) {
+private fun FilesHeader(openDrawer: () -> Unit, folder: Channel?) {
     val colors = FlesTheme.colors
     Row(
         modifier = Modifier

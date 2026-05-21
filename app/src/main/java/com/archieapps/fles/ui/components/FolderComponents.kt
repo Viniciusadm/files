@@ -31,7 +31,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.archieapps.fles.ui.model.MockChannel
+import com.archieapps.fles.ui.model.Channel
 import com.archieapps.fles.ui.theme.FlesTheme
 
 fun folderIcon(name: String): ImageVector {
@@ -75,7 +75,7 @@ fun FolderAvatar(
 
 @Composable
 fun FolderListItem(
-    channel: MockChannel,
+    channel: Channel,
     active: Boolean,
     onClick: () -> Unit,
     modifier: Modifier = Modifier

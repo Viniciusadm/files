@@ -50,15 +50,15 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.archieapps.fles.ui.model.MessageType
-import com.archieapps.fles.ui.model.MockChannel
-import com.archieapps.fles.ui.model.MockMessage
+import com.archieapps.fles.ui.model.Channel
+import com.archieapps.fles.ui.model.Message
 import com.archieapps.fles.ui.model.SyncStatus
 import com.archieapps.fles.ui.theme.FlesTheme
 import com.archieapps.fles.ui.theme.withAlpha
 
 @Composable
 fun ChatHeader(
-    channel: MockChannel,
+    channel: Channel,
     itemCount: Int,
     onMenuClick: () -> Unit,
     onBack: (() -> Unit)? = null
@@ -88,7 +88,7 @@ fun ChatHeader(
 }
 
 @Composable
-fun MessageList(messages: List<MockMessage>, modifier: Modifier = Modifier, bottomPadding: Dp = 16.dp) {
+fun MessageList(messages: List<Message>, modifier: Modifier = Modifier, bottomPadding: Dp = 16.dp) {
     val colors = FlesTheme.colors
     if (messages.isEmpty()) {
         EmptyState(
@@ -125,7 +125,7 @@ fun MessageList(messages: List<MockMessage>, modifier: Modifier = Modifier, bott
 }
 
 @Composable
-fun MessageBubble(message: MockMessage) {
+fun MessageBubble(message: Message) {
     val colors = FlesTheme.colors
     Row(
         modifier = Modifier
@@ -166,7 +166,7 @@ fun MessageBubble(message: MockMessage) {
 }
 
 @Composable
-fun AttachmentGrid(message: MockMessage) {
+fun AttachmentGrid(message: Message) {
     FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         message.attachments.forEach { attachment ->
             Surface(
@@ -188,7 +188,7 @@ fun AttachmentGrid(message: MockMessage) {
 }
 
 @Composable
-fun ListMessageCard(message: MockMessage) {
+fun ListMessageCard(message: Message) {
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Text(message.content, color = FlesTheme.colors.bubbleOwnForeground, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
         message.listItems.forEach {

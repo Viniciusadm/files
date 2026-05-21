@@ -17,6 +17,11 @@ class AuthInterceptor(private val tokenStorage: TokenStorage) : Interceptor {
             requestBuilder.header("Authorization", "Bearer $token")
         }
 
-        return chain.proceed(requestBuilder.build())
+        val response = chain.proceed(requestBuilder.build())
+        if (response.code == 401) {
+            runBlocking { tokenStorage.clearToken() }
+            SessionEvents.emitUnauthorized()
+        }
+        return response
     }
 }
