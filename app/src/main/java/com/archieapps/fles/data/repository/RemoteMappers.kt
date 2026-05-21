@@ -17,6 +17,7 @@ import com.archieapps.fles.ui.model.SyncStatus
 suspend fun RemoteChannel.toUi(cryptoRepository: CryptoRepository): Channel {
     return Channel(
         id = id.orEmpty(),
+        remoteId = id,
         name = cryptoRepository.tryDecryptString(name),
         lastMessage = cryptoRepository.tryDecryptString(lastMessage),
         updatedAt = updatedAt.orEmpty(),
@@ -30,10 +31,12 @@ suspend fun RemoteMessage.toUi(cryptoRepository: CryptoRepository): Message {
     val uiAttachments = attachments.orEmpty().map { it.toUi(cryptoRepository) }
     return Message(
         id = id.orEmpty(),
+        remoteId = id,
         folderId = folderId.orEmpty(),
         type = type.toMessageType(uiAttachments),
         content = cryptoRepository.tryDecryptString(content),
         createdAt = createdAt.orEmpty(),
+        updatedAt = updatedAt.orEmpty(),
         isFavorite = isFavorite.asBoolean(),
         syncStatus = SyncStatus.Synced,
         attachments = uiAttachments,
@@ -44,6 +47,8 @@ suspend fun RemoteMessage.toUi(cryptoRepository: CryptoRepository): Message {
 suspend fun RemoteListItem.toUi(cryptoRepository: CryptoRepository): ListItem {
     return ListItem(
         id = id.orEmpty(),
+        remoteId = id,
+        messageId = messageId.orEmpty(),
         text = cryptoRepository.tryDecryptString(text),
         checked = isChecked.asBoolean(),
         position = position.asInt()
@@ -53,6 +58,8 @@ suspend fun RemoteListItem.toUi(cryptoRepository: CryptoRepository): ListItem {
 suspend fun RemoteAttachment.toUi(cryptoRepository: CryptoRepository): Attachment {
     return Attachment(
         id = id.orEmpty(),
+        remoteId = id,
+        messageId = messageId.orEmpty(),
         fileName = cryptoRepository.tryDecryptString(fileName),
         mimeType = mimeType ?: "application/octet-stream",
         size = size.asLong(),

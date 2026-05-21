@@ -651,10 +651,10 @@ private fun DropdownLikeRow(label: String, icon: androidx.compose.ui.graphics.ve
 fun SyncIcon(status: SyncStatus, tint: Color) {
     val icon = when (status) {
         SyncStatus.Synced -> Icons.Filled.Check
-        SyncStatus.Error -> Icons.Filled.ErrorOutline
+        SyncStatus.Failed -> Icons.Filled.ErrorOutline
         else -> Icons.Filled.Schedule
     }
-    Icon(icon, null, modifier = Modifier.size(11.dp), tint = if (status == SyncStatus.Error) Color(0xFFE57373) else tint)
+    Icon(icon, null, modifier = Modifier.size(11.dp), tint = if (status == SyncStatus.Failed) Color(0xFFE57373) else tint)
 }
 
 fun dayLabel(iso: String): String {

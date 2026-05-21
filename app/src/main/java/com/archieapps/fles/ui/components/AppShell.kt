@@ -57,6 +57,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.archieapps.fles.ui.model.Channel
+import com.archieapps.fles.sync.GlobalSyncState
+import com.archieapps.fles.sync.SyncRuntimeState
 import com.archieapps.fles.ui.theme.FlesTheme
 import com.archieapps.fles.ui.theme.withAlpha
 import kotlinx.coroutines.launch
@@ -84,6 +86,7 @@ fun AppShell(
     onNavigateSearch: (String) -> Unit,
     onCreateChannel: (String, String, String) -> Unit,
     onLogout: () -> Unit,
+    syncState: SyncRuntimeState = SyncRuntimeState(),
     content: @Composable (openDrawer: () -> Unit) -> Unit
 ) {
     val drawerState = rememberDrawerState(DrawerValue.Closed)
@@ -139,9 +142,40 @@ fun AppShell(
                     .fillMaxSize()
                     .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal))
             ) {
-                content { scope.launch { drawerState.open() } }
+                Column(modifier = Modifier.fillMaxSize()) {
+                    SyncStatusBanner(syncState)
+                    Box(modifier = Modifier.weight(1f)) {
+                        content { scope.launch { drawerState.open() } }
+                    }
+                }
             }
         }
+    }
+}
+
+@Composable
+private fun SyncStatusBanner(syncState: SyncRuntimeState) {
+    val colors = FlesTheme.colors
+    val text = when {
+        !syncState.isOnline || syncState.global == GlobalSyncState.Offline ->
+            if (syncState.pendingOps > 0) "Offline · ${syncState.pendingOps} aguardando sincronização" else "Sem conexão"
+        syncState.global == GlobalSyncState.WaitingKey -> "Configure sua chave E2EE para sincronizar"
+        syncState.global == GlobalSyncState.Syncing -> "Sincronizando..."
+        syncState.global == GlobalSyncState.Failed -> "Erro de sincronização"
+        syncState.pendingOps > 0 -> "${syncState.pendingOps} aguardando sincronização"
+        else -> null
+    } ?: return
+    val bg = when (syncState.global) {
+        GlobalSyncState.WaitingKey,
+        GlobalSyncState.Failed -> colors.destructive
+        GlobalSyncState.Syncing -> colors.primary
+        else -> colors.favorite
+    }
+    Row(
+        modifier = Modifier.fillMaxWidth().background(bg).padding(horizontal = 12.dp, vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(text, color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Medium)
     }
 }
 

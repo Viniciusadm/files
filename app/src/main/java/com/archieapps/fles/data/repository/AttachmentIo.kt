@@ -7,9 +7,14 @@ import android.provider.OpenableColumns
 import com.archieapps.fles.ui.model.FileKind
 import com.archieapps.fles.ui.model.PendingAttachment
 import java.io.File
+import java.util.UUID
 
 class AttachmentIo(private val context: Context) {
     private val resolver: ContentResolver = context.contentResolver
+    private val attachmentsDir: File
+        get() = File(context.filesDir, "attachments").also { it.mkdirs() }
+    private val downloadsDir: File
+        get() = File(context.filesDir, "downloads").also { it.mkdirs() }
 
     fun pendingFromUri(uri: Uri, mimeHint: String? = null): PendingAttachment {
         val info = queryInfo(uri)
@@ -34,9 +39,27 @@ class AttachmentIo(private val context: Context) {
             ?: throw IllegalStateException("Não foi possível ler o arquivo")
     }
 
+    fun readBytes(path: String): ByteArray {
+        return File(path.removePrefix("file://")).readBytes()
+    }
+
+    fun persistAttachment(localId: String, attachment: PendingAttachment): File {
+        val extension = attachment.extension.ifBlank { "bin" }.replace(Regex("[^a-zA-Z0-9]"), "").take(8).ifBlank { "bin" }
+        val file = File(attachmentsDir, "$localId.$extension")
+        file.writeBytes(readBytes(attachment.uri))
+        return file
+    }
+
+    fun persistDownloadedFile(localId: String, fileName: String, bytes: ByteArray): File {
+        val safe = fileName.replace(Regex("[^a-zA-Z0-9._-]"), "_").ifBlank { "arquivo" }
+        val file = File(downloadsDir, "$localId-$safe")
+        file.writeBytes(bytes)
+        return file
+    }
+
     fun writeCacheFile(fileName: String, bytes: ByteArray): File {
         val safe = fileName.replace(Regex("[^a-zA-Z0-9._-]"), "_").ifBlank { "arquivo" }
-        val file = File(context.cacheDir, "${System.currentTimeMillis()}-$safe")
+        val file = File(context.cacheDir, "${UUID.randomUUID()}-$safe")
         file.writeBytes(bytes)
         return file
     }

@@ -12,6 +12,7 @@ import com.archieapps.fles.ui.state.UiState
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 import java.io.File
 
@@ -20,14 +21,17 @@ class MessagesViewModel(private val channelsRepository: ChannelsRepository) : Vi
     val state: StateFlow<UiState<List<Channel>>> = _state.asStateFlow()
 
     init {
+        viewModelScope.launch {
+            channelsRepository.observeChannels().collectLatest {
+                _state.value = if (it.isEmpty()) UiState.Empty else UiState.Success(it)
+            }
+        }
         load()
     }
 
     fun load() {
         viewModelScope.launch {
-            _state.value = UiState.Loading
-            runCatching { channelsRepository.getChannels() }
-                .onSuccess { _state.value = if (it.isEmpty()) UiState.Empty else UiState.Success(it) }
+            runCatching { channelsRepository.refreshFromRemote() }
                 .onFailure { _state.value = UiState.Error(it.userMessage()) }
         }
     }
@@ -36,7 +40,6 @@ class MessagesViewModel(private val channelsRepository: ChannelsRepository) : Vi
         viewModelScope.launch {
             runCatching { channelsRepository.createChannel(name, icon, color) }
                 .onSuccess {
-                    load()
                     onDone()
                 }
                 .onFailure { _state.value = UiState.Error(it.userMessage()) }
@@ -55,19 +58,18 @@ class ThreadViewModel(
     val action: StateFlow<ThreadActionState> = _action.asStateFlow()
 
     init {
+        viewModelScope.launch {
+            messagesRepository.observeMessages(folderId).collectLatest { messages ->
+                val channel = channelsRepository.getChannel(folderId)
+                _state.value = if (channel == null) UiState.Empty else UiState.Success(ThreadUiState(channel, messages))
+            }
+        }
         load()
     }
 
     fun load() {
         viewModelScope.launch {
-            _state.value = UiState.Loading
-            runCatching {
-                val channel = channelsRepository.getChannel(folderId)
-                val messages = messagesRepository.getMessages(folderId)
-                if (channel == null) null else ThreadUiState(channel, messages)
-            }.onSuccess {
-                _state.value = if (it == null) UiState.Empty else UiState.Success(it)
-            }.onFailure {
+            runCatching { messagesRepository.refreshMessagesFromRemote(folderId) }.onFailure {
                 _state.value = UiState.Error(it.userMessage())
             }
         }
@@ -79,7 +81,6 @@ class ThreadViewModel(
             runCatching { messagesRepository.send(folderId, content, attachments) }
                 .onSuccess {
                     _action.value = ThreadActionState(success = "Enviado")
-                    load()
                     onDone()
                 }
                 .onFailure { _action.value = ThreadActionState(error = it.userMessage()) }
@@ -92,7 +93,6 @@ class ThreadViewModel(
             runCatching { messagesRepository.createChecklist(folderId, title, items) }
                 .onSuccess {
                     _action.value = ThreadActionState(success = "Lista criada")
-                    load()
                     onDone()
                 }
                 .onFailure { _action.value = ThreadActionState(error = it.userMessage()) }
@@ -121,16 +121,13 @@ class ThreadViewModel(
     fun reorderListItems(messageId: String, orderedIds: List<String>) = mutate { messagesRepository.reorderListItems(messageId, orderedIds) }
 
     suspend fun downloadToCache(attachment: Attachment): File {
-        return messagesRepository.cachePlainFile(
-            attachment.fileName,
-            messagesRepository.downloadAttachment(attachment.url)
-        )
+        return messagesRepository.downloadAttachment(attachment)
     }
 
     private fun mutate(block: suspend () -> Unit) {
         viewModelScope.launch {
             runCatching { block() }
-                .onSuccess { load() }
+                .onSuccess { _action.value = ThreadActionState() }
                 .onFailure { _action.value = ThreadActionState(error = it.userMessage()) }
         }
     }

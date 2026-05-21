@@ -13,8 +13,19 @@ enum class MessageType {
 enum class SyncStatus {
     Synced,
     PendingCreate,
+    PendingUpdate,
+    PendingDelete,
     PendingUpload,
-    Error
+    Uploading,
+    Downloading,
+    Failed
+}
+
+enum class UploadStatus {
+    PendingUpload,
+    Uploading,
+    Uploaded,
+    Failed
 }
 
 enum class FileKind {
@@ -40,23 +51,31 @@ data class User(
 
 data class Channel(
     val id: String,
+    val remoteId: String? = null,
     val name: String,
     val lastMessage: String,
     val updatedAt: String,
     val icon: String,
     val color: Color,
-    val syncStatus: SyncStatus = SyncStatus.Synced
+    val syncStatus: SyncStatus = SyncStatus.Synced,
+    val lastError: String? = null
 )
 
 data class ListItem(
     val id: String,
+    val remoteId: String? = null,
+    val messageId: String = "",
     val text: String,
     val checked: Boolean,
-    val position: Int = 0
+    val position: Int = 0,
+    val syncStatus: SyncStatus = SyncStatus.Synced,
+    val lastError: String? = null
 )
 
 data class Attachment(
     val id: String,
+    val remoteId: String? = null,
+    val messageId: String = "",
     val fileName: String,
     val mimeType: String,
     val size: Long,
@@ -66,17 +85,25 @@ data class Attachment(
     val previewUrl: String? = null,
     val compressed: Boolean = false,
     val extension: String = "",
-    val previewColor: Color? = null
+    val previewColor: Color? = null,
+    val localPath: String? = null,
+    val previewLocalPath: String? = null,
+    val uploadStatus: UploadStatus = UploadStatus.Uploaded,
+    val syncStatus: SyncStatus = SyncStatus.Synced,
+    val lastError: String? = null
 )
 
 data class Message(
     val id: String,
+    val remoteId: String? = null,
     val folderId: String,
     val type: MessageType,
     val content: String,
     val createdAt: String,
+    val updatedAt: String = createdAt,
     val isFavorite: Boolean,
     val syncStatus: SyncStatus,
+    val lastError: String? = null,
     val attachments: List<Attachment> = emptyList(),
     val listItems: List<ListItem> = emptyList()
 )

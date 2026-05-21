@@ -11,6 +11,7 @@ import com.archieapps.fles.ui.model.FileKind
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import java.io.File
@@ -27,6 +28,11 @@ class FilesViewModel(
     val action: StateFlow<FileActionState?> = _action.asStateFlow()
 
     init {
+        viewModelScope.launch {
+            filesRepository.observeFiles(folderId, favoritesOnlyInitial).collectLatest { (folder, files) ->
+                _state.update { it.copy(folder = folder, files = files, loading = false, error = null) }
+            }
+        }
         load()
     }
 
@@ -51,7 +57,6 @@ class FilesViewModel(
 
     fun load() {
         viewModelScope.launch {
-            _state.update { it.copy(loading = true, error = null) }
             runCatching {
                 val current = _state.value
                 val folder = folderId?.let { channelsRepository.getChannel(it) }
