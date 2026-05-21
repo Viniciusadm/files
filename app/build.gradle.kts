@@ -3,6 +3,21 @@ plugins {
     alias(libs.plugins.kotlin.compose)
 }
 
+import java.util.Properties
+
+val localProperties = Properties().apply {
+    val localPropertiesFile = rootProject.file("local.properties")
+    if (localPropertiesFile.exists()) {
+        localPropertiesFile.inputStream().use(::load)
+    }
+}
+val apiBaseUrlPropertyName = "API_BASE_URL"
+val fallbackApiBaseUrl = "https://example.invalid/"
+val apiBaseUrl = localProperties.getProperty(apiBaseUrlPropertyName)
+    ?.takeIf { it.isNotBlank() }
+    ?: fallbackApiBaseUrl
+val buildConfigApiBaseUrl = "\"${apiBaseUrl.replace("\\", "\\\\").replace("\"", "\\\"")}\""
+
 android {
     namespace = "com.archieapps.fles"
     compileSdk {
@@ -23,11 +38,11 @@ android {
 
     buildTypes {
         debug {
-            buildConfigField("String", "API_BASE_URL", "\"http://10.0.2.2:8000/api/\"")
+            buildConfigField("String", apiBaseUrlPropertyName, buildConfigApiBaseUrl)
         }
 
         release {
-            buildConfigField("String", "API_BASE_URL", "\"http://10.0.2.2:8000/api/\"")
+            buildConfigField("String", apiBaseUrlPropertyName, buildConfigApiBaseUrl)
             isMinifyEnabled = false
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
