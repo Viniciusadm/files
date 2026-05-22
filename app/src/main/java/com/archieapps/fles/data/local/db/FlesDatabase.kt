@@ -4,6 +4,8 @@ import android.content.Context
 import androidx.room.Database
 import androidx.room.Room
 import androidx.room.RoomDatabase
+import androidx.room.migration.Migration
+import androidx.sqlite.db.SupportSQLiteDatabase
 
 @Database(
     entities = [
@@ -16,7 +18,7 @@ import androidx.room.RoomDatabase
         SyncQueueEntity::class,
         SyncStateEntity::class
     ],
-    version = 1,
+    version = 2,
     exportSchema = false
 )
 abstract class FlesDatabase : RoomDatabase() {
@@ -39,9 +41,17 @@ abstract class FlesDatabase : RoomDatabase() {
                     FlesDatabase::class.java,
                     "fles.db"
                 )
+                    .addMigrations(MIGRATION_1_2)
                     .enableMultiInstanceInvalidation()
                     .build()
                     .also { instance = it }
+            }
+        }
+
+        private val MIGRATION_1_2 = object : Migration(1, 2) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE channels ADD COLUMN isSecure INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_channels_isSecure ON channels(isSecure)")
             }
         }
     }

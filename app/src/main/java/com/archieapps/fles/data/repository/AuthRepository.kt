@@ -14,7 +14,8 @@ import com.archieapps.fles.ui.model.User
 class AuthRepository(
     private val apiService: ApiService,
     private val tokenStorage: TokenStorage,
-    private val database: FlesDatabase
+    private val database: FlesDatabase,
+    private val secureFoldersRepository: SecureFoldersRepository
 ) {
     suspend fun login(email: String, password: String): LoginResponse {
         val response = apiService.login(LoginRequest(email, password)).requireBody()
@@ -29,6 +30,7 @@ class AuthRepository(
     }
 
     suspend fun logout() {
+        secureFoldersRepository.lock()
         if (!tokenStorage.getToken().isNullOrBlank()) {
             runCatching { apiService.logout() }
         }

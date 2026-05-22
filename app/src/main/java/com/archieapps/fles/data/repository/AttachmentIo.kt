@@ -50,6 +50,13 @@ class AttachmentIo(private val context: Context) {
         return file
     }
 
+    fun persistAttachmentBytes(localId: String, extensionValue: String, bytes: ByteArray): File {
+        val extension = extensionValue.ifBlank { "bin" }.replace(Regex("[^a-zA-Z0-9]"), "").take(8).ifBlank { "bin" }
+        val file = File(attachmentsDir, "$localId.$extension")
+        file.writeBytes(bytes)
+        return file
+    }
+
     fun persistDownloadedFile(localId: String, fileName: String, bytes: ByteArray): File {
         val safe = fileName.replace(Regex("[^a-zA-Z0-9._-]"), "_").ifBlank { "arquivo" }
         val file = File(downloadsDir, "$localId-$safe")
@@ -62,6 +69,10 @@ class AttachmentIo(private val context: Context) {
         val file = File(context.cacheDir, "${UUID.randomUUID()}-$safe")
         file.writeBytes(bytes)
         return file
+    }
+
+    fun clearTemporaryCache() {
+        context.cacheDir.listFiles()?.forEach { file -> runCatching { file.deleteRecursively() } }
     }
 
     private fun queryInfo(uri: Uri): FileInfo {

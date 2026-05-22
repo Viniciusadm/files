@@ -21,10 +21,12 @@ class FilesRepository(
     ): Flow<Pair<com.archieapps.fles.ui.model.Channel?, List<FileItem>>> {
         return combine(
             channelsRepository.observeChannels(),
+            channelsRepository.observeSecureChannels(),
             messagesRepository.observeAllMessages()
-        ) { channels, messages ->
-            val selectedFolder = folderId?.let { id -> channels.firstOrNull { it.id == id } }
-            val selectedChannels = channels.filter { folderId == null || it.id == folderId }
+        ) { channels, secureChannels, messages ->
+            val visibleChannels = if (folderId == null) channels else channels + secureChannels
+            val selectedFolder = folderId?.let { id -> visibleChannels.firstOrNull { it.id == id } }
+            val selectedChannels = visibleChannels.filter { folderId == null || it.id == folderId }
             val channelById = selectedChannels.associateBy { it.id }
             val files = messages
                 .filter { channelById.containsKey(it.folderId) }
@@ -49,7 +51,8 @@ class FilesRepository(
         kind: FileKind? = null
     ): List<FileItem> {
         val channels = channelsRepository.getChannels()
-        val selected = channels.filter { folderId == null || it.id == folderId }
+        val visibleChannels = if (folderId == null) channels else channels + channelsRepository.getSecureChannels()
+        val selected = visibleChannels.filter { folderId == null || it.id == folderId }
         val files = selected.flatMap { channel ->
             messagesRepository.getMessages(channel.id).flatMap { it.toFileItem(channel) }
         }

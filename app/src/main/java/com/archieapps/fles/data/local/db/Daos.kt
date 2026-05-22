@@ -28,11 +28,17 @@ interface SessionDao {
 
 @Dao
 interface ChannelDao {
-    @Query("SELECT * FROM channels WHERE deletedAt IS NULL ORDER BY updatedAt DESC")
-    fun observeActive(): Flow<List<ChannelEntity>>
+    @Query("SELECT * FROM channels WHERE deletedAt IS NULL AND (:includeSecure = 1 OR isSecure = 0) ORDER BY updatedAt DESC")
+    fun observeActive(includeSecure: Boolean): Flow<List<ChannelEntity>>
 
-    @Query("SELECT * FROM channels WHERE deletedAt IS NULL ORDER BY updatedAt DESC")
-    suspend fun active(): List<ChannelEntity>
+    @Query("SELECT * FROM channels WHERE deletedAt IS NULL AND (:includeSecure = 1 OR isSecure = 0) ORDER BY updatedAt DESC")
+    suspend fun active(includeSecure: Boolean): List<ChannelEntity>
+
+    @Query("SELECT * FROM channels WHERE deletedAt IS NULL AND isSecure = 1 ORDER BY updatedAt DESC")
+    fun observeSecureActive(): Flow<List<ChannelEntity>>
+
+    @Query("SELECT * FROM channels WHERE deletedAt IS NULL AND isSecure = 1 ORDER BY updatedAt DESC")
+    suspend fun secureActive(): List<ChannelEntity>
 
     @Query("SELECT * FROM channels WHERE localId = :localId LIMIT 1")
     suspend fun byLocalId(localId: String): ChannelEntity?

@@ -57,6 +57,7 @@ data class Channel(
     val updatedAt: String,
     val icon: String,
     val color: Color,
+    val isSecure: Boolean = false,
     val syncStatus: SyncStatus = SyncStatus.Synced,
     val lastError: String? = null
 )

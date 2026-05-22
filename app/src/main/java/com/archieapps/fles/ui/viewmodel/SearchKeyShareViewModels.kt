@@ -9,6 +9,7 @@ import com.archieapps.fles.data.repository.ChannelsRepository
 import com.archieapps.fles.data.repository.CryptoRepository
 import com.archieapps.fles.data.repository.MessagesRepository
 import com.archieapps.fles.data.repository.SearchResult
+import com.archieapps.fles.data.repository.SecureFoldersRepository
 import com.archieapps.fles.ui.model.Channel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -111,6 +112,78 @@ data class KeyUiState(
     val value: String = "",
     val configured: Boolean = false,
     val fingerprint: String? = null,
+    val loading: Boolean = false,
+    val error: String? = null
+)
+
+class SecureFoldersViewModel(private val repository: SecureFoldersRepository) : ViewModel() {
+    private val _state = MutableStateFlow(SecureFoldersUiState(loading = true))
+    val state: StateFlow<SecureFoldersUiState> = _state.asStateFlow()
+
+    init {
+        refresh()
+    }
+
+    fun onPinChange(value: String) {
+        _state.update { it.copy(pin = value.filter(Char::isDigit).take(4), error = null) }
+    }
+
+    fun setup(onUnlocked: () -> Unit) {
+        submit(onUnlocked) { pin -> repository.setup(pin) }
+    }
+
+    fun unlock(onUnlocked: () -> Unit) {
+        submit(onUnlocked) { pin -> repository.unlock(pin) }
+    }
+
+    fun reset(onUnlocked: () -> Unit) {
+        submit(onUnlocked) { pin -> repository.reset(pin) }
+    }
+
+    fun lock() {
+        repository.lock()
+        _state.update { it.copy(unlocked = false, pin = "") }
+    }
+
+    private fun refresh() {
+        viewModelScope.launch {
+            runCatching { repository.refreshMeta() }
+                .onSuccess { meta ->
+                    _state.update {
+                        it.copy(
+                            configured = meta?.configured == true,
+                            unlocked = repository.state.value.unlocked,
+                            loading = false,
+                            error = null
+                        )
+                    }
+                }
+                .onFailure { error ->
+                    _state.update { it.copy(loading = false, error = error.userMessage()) }
+                }
+        }
+    }
+
+    private fun submit(onUnlocked: () -> Unit, block: suspend (String) -> Unit) {
+        val pin = _state.value.pin
+        viewModelScope.launch {
+            _state.update { it.copy(loading = true, error = null) }
+            runCatching { block(pin) }
+                .onSuccess {
+                    _state.update { it.copy(configured = true, unlocked = true, pin = "", loading = false, error = null) }
+                    onUnlocked()
+                }
+                .onFailure { error ->
+                    _state.update { it.copy(loading = false, error = error.userMessage()) }
+                }
+        }
+    }
+}
+
+data class SecureFoldersUiState(
+    val configured: Boolean = false,
+    val unlocked: Boolean = false,
+    val pin: String = "",
     val loading: Boolean = false,
     val error: String? = null
 )

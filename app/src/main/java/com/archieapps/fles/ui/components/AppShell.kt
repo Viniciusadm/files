@@ -29,6 +29,8 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ChatBubbleOutline
 import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.Key
+import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.LockOpen
 import androidx.compose.material.icons.filled.Message
 import androidx.compose.material.icons.filled.Logout
 import androidx.compose.material.icons.filled.Search
@@ -36,6 +38,7 @@ import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.DrawerValue
 import androidx.compose.material3.Icon
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.ModalDrawerSheet
 import androidx.compose.material3.ModalNavigationDrawer
 import androidx.compose.material3.Surface
@@ -76,14 +79,17 @@ fun AppShell(
     section: MainSection,
     activeFolderId: String?,
     channels: List<Channel>,
+    secureChannels: List<Channel> = emptyList(),
+    secureUnlocked: Boolean = false,
     onNavigateMessages: () -> Unit,
     onNavigateThread: (String) -> Unit,
     onNavigateFiles: () -> Unit,
     onNavigateFolderFiles: (String) -> Unit,
     onNavigateFavorites: () -> Unit,
     onNavigateKey: () -> Unit,
+    onNavigateSecureFolders: () -> Unit,
     onNavigateSearch: (String) -> Unit,
-    onCreateChannel: (String, String, String) -> Unit,
+    onCreateChannel: (String, String, String, Boolean) -> Unit,
     onLogout: () -> Unit,
     syncState: SyncRuntimeState = SyncRuntimeState(),
     content: @Composable (openDrawer: () -> Unit) -> Unit
@@ -101,6 +107,8 @@ fun AppShell(
                     section = section,
                     activeFolderId = activeFolderId,
                     channels = channels,
+                    secureChannels = secureChannels,
+                    secureUnlocked = secureUnlocked,
                     onNavigateMessages = {
                         scope.launch { drawerState.close() }
                         onNavigateMessages()
@@ -124,6 +132,10 @@ fun AppShell(
                     onNavigateKey = {
                         scope.launch { drawerState.close() }
                         onNavigateKey()
+                    },
+                    onNavigateSecureFolders = {
+                        scope.launch { drawerState.close() }
+                        onNavigateSecureFolders()
                     },
                     onNavigateSearch = {
                         scope.launch { drawerState.close() }
@@ -156,14 +168,17 @@ fun Sidebar(
     section: MainSection,
     activeFolderId: String?,
     channels: List<Channel>,
+    secureChannels: List<Channel>,
+    secureUnlocked: Boolean,
     onNavigateMessages: () -> Unit,
     onNavigateThread: (String) -> Unit,
     onNavigateFiles: () -> Unit,
     onNavigateFolderFiles: (String) -> Unit,
     onNavigateFavorites: () -> Unit,
     onNavigateKey: () -> Unit,
+    onNavigateSecureFolders: () -> Unit,
     onNavigateSearch: (String) -> Unit,
-    onCreateChannel: (String, String, String) -> Unit,
+    onCreateChannel: (String, String, String, Boolean) -> Unit,
     onLogout: () -> Unit
 ) {
     val colors = FlesTheme.colors
@@ -190,6 +205,11 @@ fun Sidebar(
                 Text("usuario@exemplo.com", color = colors.mutedForeground, fontSize = 12.sp, maxLines = 1)
             }
             IconButtonBox(Icons.Filled.Key, onClick = onNavigateKey, tint = colors.sidebarForeground)
+            IconButtonBox(
+                if (secureUnlocked) Icons.Filled.LockOpen else Icons.Filled.Lock,
+                onClick = onNavigateSecureFolders,
+                tint = colors.sidebarForeground
+            )
             IconButtonBox(Icons.Filled.Add, onClick = { createOpen = true }, tint = colors.sidebarForeground)
         }
         Box(modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp)) {
@@ -235,6 +255,30 @@ fun Sidebar(
                     }
                 )
             }
+            if (secureUnlocked && secureChannels.isNotEmpty()) {
+                item {
+                    Text(
+                        "Pastas Seguras",
+                        color = colors.mutedForeground,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 10.dp)
+                    )
+                }
+                items(secureChannels, key = { "secure-${it.id}" }) { channel ->
+                    FolderListItem(
+                        channel = channel,
+                        active = activeFolderId == channel.id,
+                        onClick = {
+                            if (section == MainSection.Files || section == MainSection.Favorites) {
+                                onNavigateFolderFiles(channel.id)
+                            } else {
+                                onNavigateThread(channel.id)
+                            }
+                        }
+                    )
+                }
+            }
         }
         Surface(
             modifier = Modifier.fillMaxWidth().padding(8.dp),
@@ -262,9 +306,10 @@ fun Sidebar(
         }
         if (createOpen) {
             CreateChannelDialog(
+                secureEnabled = secureUnlocked,
                 onClose = { createOpen = false },
-                onCreate = { name, icon, color ->
-                    onCreateChannel(name, icon, color)
+                onCreate = { name, icon, color, isSecure ->
+                    onCreateChannel(name, icon, color, isSecure)
                     createOpen = false
                 }
             )
@@ -273,11 +318,16 @@ fun Sidebar(
 }
 
 @Composable
-private fun CreateChannelDialog(onClose: () -> Unit, onCreate: (String, String, String) -> Unit) {
+private fun CreateChannelDialog(
+    secureEnabled: Boolean,
+    onClose: () -> Unit,
+    onCreate: (String, String, String, Boolean) -> Unit
+) {
     val colors = FlesTheme.colors
     var name by remember { mutableStateOf("") }
     var icon by remember { mutableStateOf("Folder") }
     var color by remember { mutableStateOf("#3390ec") }
+    var isSecure by remember { mutableStateOf(false) }
     val icons = listOf("Folder", "Inbox", "Briefcase", "GraduationCap", "Image", "Star")
     val colorsList = listOf("#3390ec", "#22c55e", "#eab308", "#ef4444", "#8b5cf6", "#06b6d4")
     AlertDialog(
@@ -308,9 +358,15 @@ private fun CreateChannelDialog(onClose: () -> Unit, onCreate: (String, String, 
                         )
                     }
                 }
+                if (secureEnabled) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Checkbox(checked = isSecure, onCheckedChange = { isSecure = it })
+                        Text("Segura", color = colors.foreground, fontSize = 14.sp, fontWeight = FontWeight.Medium)
+                    }
+                }
             }
         },
-        confirmButton = { AppButton("Criar pasta", enabled = name.trim().isNotBlank(), onClick = { onCreate(name, icon, color) }) },
+        confirmButton = { AppButton("Criar pasta", enabled = name.trim().isNotBlank(), onClick = { onCreate(name, icon, color, isSecure) }) },
         dismissButton = { AppButton("Cancelar", variant = AppButtonVariant.Ghost, onClick = onClose) }
     )
 }

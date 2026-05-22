@@ -48,7 +48,7 @@ class SyncEngine(
             drainQueue()
             channelsRepository.refreshFromRemote()
             syncStateDao.upsert(SyncStateEntity("channels", nowMs(), null))
-            channelsRepository.getChannels().forEach { channel ->
+            (channelsRepository.getChannels() + channelsRepository.getSecureChannels()).forEach { channel ->
                 runCatching {
                     messagesRepository.refreshMessagesFromRemote(channel.id)
                     syncStateDao.upsert(SyncStateEntity("messages:${channel.id}", nowMs(), null))

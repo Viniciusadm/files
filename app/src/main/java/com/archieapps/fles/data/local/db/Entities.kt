@@ -38,6 +38,7 @@ data class ChannelEntity(
     val name: String,
     val icon: String?,
     val color: String?,
+    val isSecure: Boolean,
     val parentLocalId: String?,
     val lastMessagePreview: String?,
     val syncStatus: String,

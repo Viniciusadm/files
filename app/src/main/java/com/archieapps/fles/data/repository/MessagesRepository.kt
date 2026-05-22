@@ -46,6 +46,7 @@ import java.util.UUID
 class MessagesRepository(
     private val apiService: ApiService,
     private val cryptoRepository: CryptoRepository,
+    private val secureFoldersRepository: SecureFoldersRepository,
     private val channelsRepository: ChannelsRepository,
     private val attachmentIo: AttachmentIo,
     private val messageDao: MessageDao,
@@ -57,7 +58,8 @@ class MessagesRepository(
 ) {
     fun observeMessages(folderId: String): Flow<List<Message>> {
         return messageDao.observeByFolderWithChildren(folderId).mapLatest { rows ->
-            rows.map { it.toUi() }
+            val secure = channelsRepository.isSecure(folderId)
+            if (secure && !secureFoldersRepository.state.value.unlocked) emptyList() else rows.map { if (secure) it.toSecureUi() else it.toUi() }
         }
     }
 
@@ -68,8 +70,10 @@ class MessagesRepository(
     }
 
     suspend fun getMessages(folderId: String): List<Message> {
+        val secure = channelsRepository.isSecure(folderId)
+        if (secure && !secureFoldersRepository.state.value.unlocked) return emptyList()
         return messageDao.byFolder(folderId).map { message ->
-            message.toUi(
+            if (secure) message.toSecureUi() else message.toUi(
                 listItemDao.byMessage(message.localId).map { it.toUi() },
                 attachmentDao.byMessage(message.localId).map { it.toUi() }
             )
@@ -98,6 +102,8 @@ class MessagesRepository(
     suspend fun send(folderId: String, content: String, attachments: List<PendingAttachment>): Message {
         val trimmed = content.trim()
         require(trimmed.isNotBlank() || attachments.isNotEmpty()) { "Mensagem vazia" }
+        requireFolderAccessible(folderId)
+        val secure = channelsRepository.isSecure(folderId)
         val now = nowMs()
         val localId = UUID.randomUUID().toString()
         val type = when {
@@ -106,9 +112,9 @@ class MessagesRepository(
             attachments.all { it.isImage } -> "image"
             else -> "document"
         }
-        val message = MessageEntity(localId, null, folderId, type, trimmed, false, LocalSyncStatus.PendingCreate, null, now, now, null)
+        val message = MessageEntity(localId, null, folderId, type, encryptForLocal(trimmed, secure), false, LocalSyncStatus.PendingCreate, null, now, now, null)
         messageDao.upsert(message)
-        attachments.forEach { persistAttachment(localId, it) }
+        attachments.forEach { persistAttachment(localId, it, secure) }
         queueRepository.enqueue(
             opType = "create",
             entity = "message",
@@ -118,15 +124,17 @@ class MessagesRepository(
             dependsOnId = queueRepository.lastPendingOpId(folderId)
         )
         scheduler.scheduleNow()
-        return message.toUi(emptyList(), attachmentDao.byMessage(localId).map { it.toUi() })
+        return if (secure) message.toSecureUi() else message.toUi(emptyList(), attachmentDao.byMessage(localId).map { it.toUi() })
     }
 
     suspend fun createChecklist(folderId: String, title: String, items: List<String>): Message {
         val filled = items.map { it.trim() }.filter { it.isNotBlank() }
         require(filled.isNotEmpty()) { "Adicione ao menos um item" }
+        requireFolderAccessible(folderId)
+        val secure = channelsRepository.isSecure(folderId)
         val now = nowMs()
         val localId = UUID.randomUUID().toString()
-        val message = MessageEntity(localId, null, folderId, "list", title.trim(), false, LocalSyncStatus.PendingCreate, null, now, now, null)
+        val message = MessageEntity(localId, null, folderId, "list", encryptForLocal(title.trim(), secure), false, LocalSyncStatus.PendingCreate, null, now, now, null)
         messageDao.upsert(message)
         filled.forEachIndexed { index, text ->
             listItemDao.upsert(
@@ -134,7 +142,7 @@ class MessagesRepository(
                     localId = UUID.randomUUID().toString(),
                     remoteId = null,
                     messageLocalId = localId,
-                    text = text,
+                    text = encryptForLocal(text, secure),
                     isChecked = false,
                     position = (index + 1).toDouble(),
                     syncStatus = LocalSyncStatus.Synced,
@@ -154,7 +162,7 @@ class MessagesRepository(
             dependsOnId = queueRepository.lastPendingOpId(folderId)
         )
         scheduler.scheduleNow()
-        return message.toUi(listItemDao.byMessage(localId).map { it.toUi() }, emptyList())
+        return if (secure) message.toSecureUi() else message.toUi(listItemDao.byMessage(localId).map { it.toUi() }, emptyList())
     }
 
     suspend fun deleteMessage(id: String) {
@@ -167,22 +175,28 @@ class MessagesRepository(
 
     suspend fun toggleFavorite(id: String): Message? {
         val row = messageDao.byLocalId(id) ?: return null
+        requireFolderAccessible(row.folderLocalId)
         val now = nowMs()
         val updated = row.copy(isFavorite = !row.isFavorite, syncStatus = LocalSyncStatus.PendingUpdate, updatedAt = now, lastError = null)
         messageDao.update(updated)
         queueRepository.enqueue(opType = "favorite", entity = "message", entityLocalId = id, parentLocalId = row.folderLocalId, dependsOnId = queueRepository.lastPendingOpId(id))
         scheduler.scheduleNow()
-        return updated.toUi(listItemDao.byMessage(id).map { it.toUi() }, attachmentDao.byMessage(id).map { it.toUi() })
+        return if (channelsRepository.isSecure(row.folderLocalId)) updated.toSecureUi() else updated.toUi(listItemDao.byMessage(id).map { it.toUi() }, attachmentDao.byMessage(id).map { it.toUi() })
     }
 
     suspend fun moveMessage(id: String, targetFolderId: String): Message? {
         val row = messageDao.byLocalId(id) ?: return null
+        requireFolderAccessible(row.folderLocalId)
+        requireFolderAccessible(targetFolderId)
+        require(channelsRepository.isSecure(row.folderLocalId) == channelsRepository.isSecure(targetFolderId)) {
+            "Mover entre áreas normal e segura ainda não é suportado."
+        }
         val now = nowMs()
         val updated = row.copy(folderLocalId = targetFolderId, syncStatus = LocalSyncStatus.PendingUpdate, updatedAt = now, lastError = null)
         messageDao.update(updated)
         queueRepository.enqueue(opType = "move", entity = "message", entityLocalId = id, parentLocalId = targetFolderId, dependsOnId = queueRepository.lastPendingOpId(id))
         scheduler.scheduleNow()
-        return updated.toUi(listItemDao.byMessage(id).map { it.toUi() }, attachmentDao.byMessage(id).map { it.toUi() })
+        return if (channelsRepository.isSecure(targetFolderId)) updated.toSecureUi() else updated.toUi(listItemDao.byMessage(id).map { it.toUi() }, attachmentDao.byMessage(id).map { it.toUi() })
     }
 
     suspend fun addListItem(messageId: String, text: String) {
@@ -190,7 +204,8 @@ class MessagesRepository(
         require(trimmed.isNotBlank()) { "Item vazio" }
         val now = nowMs()
         val itemId = UUID.randomUUID().toString()
-        listItemDao.upsert(ListItemEntity(itemId, null, messageId, trimmed, false, now.toDouble(), LocalSyncStatus.PendingCreate, null, now, now, null))
+        val secure = messageDao.byLocalId(messageId)?.let { channelsRepository.isSecure(it.folderLocalId) } == true
+        listItemDao.upsert(ListItemEntity(itemId, null, messageId, encryptForLocal(trimmed, secure), false, now.toDouble(), LocalSyncStatus.PendingCreate, null, now, now, null))
         queueRepository.enqueue("create", "listItem", itemId, messageId, dependsOnId = queueRepository.lastPendingOpId(messageId))
         scheduler.scheduleNow()
     }
@@ -198,7 +213,9 @@ class MessagesRepository(
     suspend fun updateListItem(messageId: String, itemId: String, text: String? = null, isChecked: Boolean? = null) {
         val row = listItemDao.byLocalId(itemId) ?: return
         val now = nowMs()
-        listItemDao.update(row.copy(text = text?.trim()?.takeIf { it.isNotBlank() } ?: row.text, isChecked = isChecked ?: row.isChecked, syncStatus = LocalSyncStatus.PendingUpdate, updatedAt = now, lastError = null))
+        val secure = messageDao.byLocalId(messageId)?.let { channelsRepository.isSecure(it.folderLocalId) } == true
+        val nextText = text?.trim()?.takeIf { it.isNotBlank() }?.let { encryptForLocal(it, secure) } ?: row.text
+        listItemDao.update(row.copy(text = nextText, isChecked = isChecked ?: row.isChecked, syncStatus = LocalSyncStatus.PendingUpdate, updatedAt = now, lastError = null))
         queueRepository.enqueue("update", "listItem", itemId, messageId, dependsOnId = queueRepository.lastPendingOpId(itemId))
         scheduler.scheduleNow()
     }
@@ -226,15 +243,23 @@ class MessagesRepository(
     }
 
     suspend fun downloadAttachment(attachment: Attachment): File {
+        val entity = attachmentDao.byLocalId(attachment.id) ?: throw IllegalStateException("Anexo não encontrado")
+        val secure = messageDao.byLocalId(entity.messageLocalId)?.let { channelsRepository.isSecure(it.folderLocalId) } == true
         attachment.localPath?.let {
             val file = File(it.removePrefix("file://"))
-            if (file.exists()) return file
+            if (file.exists()) {
+                return if (secure) {
+                    val bytes = decryptFileBytes(entity.messageLocalId, file.readBytes())
+                    attachmentIo.writeCacheFile(attachment.fileName, bytes)
+                } else {
+                    file
+                }
+            }
         }
         if (!networkMonitor.isOnline()) throw IllegalStateException("Arquivo indisponível offline. Baixe quando houver conexão.")
-        val entity = attachmentDao.byLocalId(attachment.id) ?: throw IllegalStateException("Anexo não encontrado")
         attachmentDao.update(entity.copy(syncStatus = LocalSyncStatus.Downloading, lastError = null))
         return runCatching {
-            val bytes = cryptoRepository.decryptBytesFromFile(apiService.download(normalizeDownloadUrl(entity.remoteUrl.orEmpty())).bytes())
+            val bytes = decryptFileBytes(entity.messageLocalId, apiService.download(normalizeDownloadUrl(entity.remoteUrl.orEmpty())).bytes())
             val file = attachmentIo.persistDownloadedFile(entity.localId, entity.fileName, bytes)
             attachmentDao.update(entity.copy(localPath = file.absolutePath, syncStatus = LocalSyncStatus.Synced, lastError = null, updatedAt = nowMs()))
             file
@@ -259,26 +284,31 @@ class MessagesRepository(
     suspend fun pushMessageCreate(localId: String) {
         val row = messageDao.byLocalId(localId) ?: return
         val folderRemoteId = channelsRepository.getRemoteId(row.folderLocalId) ?: throw IllegalStateException("Pasta ainda sem remoteId")
+        val secure = channelsRepository.isSecure(row.folderLocalId)
         val remote = if (row.type == "list") {
             apiService.createChecklist(
                 CreateChecklistRequest(
                     folderId = folderRemoteId,
-                    content = row.content.takeIf { it.isNotBlank() }?.let { cryptoRepository.encryptString(it) } ?: "",
-                    items = listItemDao.allByMessage(localId).filter { it.deletedAt == null }.map { ChecklistItemRequest(cryptoRepository.encryptString(it.text)) }
+                    content = row.content.takeIf { it.isNotBlank() }?.let { remoteString(it, secure) } ?: "",
+                    items = listItemDao.allByMessage(localId).filter { it.deletedAt == null }.map { ChecklistItemRequest(remoteString(it.text, secure)) }
                 )
             ).requireBody()
         } else {
             val atts = attachmentDao.allByMessage(localId).filter { it.deletedAt == null }
             if (atts.isEmpty()) {
-                apiService.createMessage(CreateMessageRequest(folderRemoteId, cryptoRepository.encryptString(row.content))).requireBody()
+                apiService.createMessage(CreateMessageRequest(folderRemoteId, remoteString(row.content, secure))).requireBody()
             } else {
                 atts.forEach { attachmentDao.update(it.copy(uploadStatus = LocalUploadStatus.Uploading, syncStatus = LocalSyncStatus.Uploading, lastError = null)) }
                 val fields = linkedMapOf<String, RequestBody>()
                 fields["folderId"] = textBody(folderRemoteId)
-                if (row.content.isNotBlank()) fields["content"] = textBody(cryptoRepository.encryptString(row.content))
+                if (row.content.isNotBlank()) fields["content"] = textBody(remoteString(row.content, secure))
                 val files = atts.mapIndexed { index, attachment ->
-                    val encrypted = cryptoRepository.encryptBytesForFile(attachmentIo.readBytes(attachment.localPath.orEmpty()), attachment.fileName)
-                    fields["fileMetadata[$index][fileName]"] = textBody(encrypted.fileNameEnvelope)
+                    val encrypted = if (secure) {
+                        EncryptedFile(attachmentIo.readBytes(attachment.localPath.orEmpty()), attachment.fileName)
+                    } else {
+                        encryptAttachmentBytes(attachmentIo.readBytes(attachment.localPath.orEmpty()), attachment.fileName, false)
+                    }
+                    fields["fileMetadata[$index][fileName]"] = textBody(if (secure) attachment.fileName else encrypted.fileNameEnvelope)
                     fields["fileMetadata[$index][mimeType]"] = textBody(attachment.mimeType)
                     fields["fileMetadata[$index][fileKind]"] = textBody(attachment.fileKind ?: "other")
                     fields["fileMetadata[$index][extension]"] = textBody(attachment.extension.orEmpty())
@@ -315,10 +345,11 @@ class MessagesRepository(
         val row = listItemDao.byLocalId(localId) ?: return
         val message = messageDao.byLocalId(row.messageLocalId) ?: return
         val messageRemoteId = message.remoteId ?: throw IllegalStateException("Mensagem ainda sem remoteId")
+        val secure = channelsRepository.isSecure(message.folderLocalId)
         when (opType) {
-            "create" -> applyListItemRemote(localId, apiService.addListItem(messageRemoteId, AddListItemRequest(cryptoRepository.encryptString(row.text))).requireBody())
-            "update" -> applyListItemRemote(localId, apiService.updateListItem(messageRemoteId, row.remoteId ?: throw IllegalStateException("Item ainda sem remoteId"), UpdateListItemRequest(text = cryptoRepository.encryptString(row.text), isChecked = row.isChecked)).requireBody())
-            "toggle" -> applyListItemRemote(localId, apiService.toggleListItem(messageRemoteId, row.remoteId ?: throw IllegalStateException("Item ainda sem remoteId")).requireBody())
+            "create" -> applyListItemRemote(localId, apiService.addListItem(messageRemoteId, AddListItemRequest(remoteString(row.text, secure))).requireBody(), secure)
+            "update" -> applyListItemRemote(localId, apiService.updateListItem(messageRemoteId, row.remoteId ?: throw IllegalStateException("Item ainda sem remoteId"), UpdateListItemRequest(text = remoteString(row.text, secure), isChecked = row.isChecked)).requireBody(), secure)
+            "toggle" -> applyListItemRemote(localId, apiService.toggleListItem(messageRemoteId, row.remoteId ?: throw IllegalStateException("Item ainda sem remoteId")).requireBody(), secure)
             "delete" -> {
                 val remoteId = row.remoteId
                 if (remoteId != null) apiService.deleteListItem(messageRemoteId, remoteId).requireSuccess()
@@ -343,16 +374,27 @@ class MessagesRepository(
         }
     }
 
-    private suspend fun persistAttachment(messageLocalId: String, attachment: PendingAttachment) {
+    private suspend fun persistAttachment(messageLocalId: String, attachment: PendingAttachment, secure: Boolean) {
         val now = nowMs()
         val localId = UUID.randomUUID().toString()
-        val file = attachmentIo.persistAttachment(localId, attachment)
+        val file = if (secure) {
+            val key = secureFoldersRepository.secureKey() ?: throw IllegalStateException("Pastas seguras bloqueadas.")
+            val encrypted = cryptoRepository.encryptBytesForFileWithKey(
+                attachmentIo.readBytes(attachment.uri),
+                attachment.fileName,
+                key,
+                secureFoldersRepository.encryptString(attachment.fileName)
+            )
+            attachmentIo.persistAttachmentBytes(localId, attachment.extension, encrypted.bytes)
+        } else {
+            attachmentIo.persistAttachment(localId, attachment)
+        }
         attachmentDao.upsert(
             AttachmentEntity(
                 localId = localId,
                 remoteId = null,
                 messageLocalId = messageLocalId,
-                fileName = attachment.fileName,
+                fileName = encryptForLocal(attachment.fileName, secure),
                 mimeType = attachment.mimeType,
                 size = file.length().takeIf { it > 0L } ?: attachment.size,
                 fileKind = attachment.kind.toRemoteKind(),
@@ -378,44 +420,46 @@ class MessagesRepository(
         val remoteCreatedAt = parseRemoteDate(remote.createdAt)
         val existing = messageDao.byRemoteId(remoteId)
         val localId = existing?.localId ?: UUID.randomUUID().toString()
+        val secure = remote.folderIsSecure == true || channelsRepository.isSecure(folderLocalId)
         if (existing == null) {
-            messageDao.upsert(MessageEntity(localId, remoteId, folderLocalId, remote.type.toLocalMessageType(), cryptoRepository.tryDecryptString(remote.content), remote.isFavorite.asBoolean(), LocalSyncStatus.Synced, null, remoteCreatedAt, remoteUpdatedAt, null))
+            messageDao.upsert(MessageEntity(localId, remoteId, folderLocalId, remote.type.toLocalMessageType(), localString(remote.content, secure), remote.isFavorite.asBoolean(), LocalSyncStatus.Synced, null, remoteCreatedAt, remoteUpdatedAt, null))
         } else if (existing.syncStatus == LocalSyncStatus.Synced && remoteUpdatedAt > existing.updatedAt) {
-            messageDao.update(existing.copy(folderLocalId = folderLocalId, type = remote.type.toLocalMessageType(), content = cryptoRepository.tryDecryptString(remote.content), isFavorite = remote.isFavorite.asBoolean(), updatedAt = remoteUpdatedAt, lastError = null))
+            messageDao.update(existing.copy(folderLocalId = folderLocalId, type = remote.type.toLocalMessageType(), content = localString(remote.content, secure), isFavorite = remote.isFavorite.asBoolean(), updatedAt = remoteUpdatedAt, lastError = null))
         }
-        remote.listItems.orEmpty().forEach { upsertListItemFromRemote(localId, it) }
-        remote.attachments.orEmpty().forEach { upsertAttachmentFromRemote(localId, it) }
+        remote.listItems.orEmpty().forEach { upsertListItemFromRemote(localId, it, secure) }
+        remote.attachments.orEmpty().forEach { upsertAttachmentFromRemote(localId, it, secure) }
         return localId
     }
 
-    private suspend fun upsertListItemFromRemote(messageLocalId: String, remote: RemoteListItem) {
+    private suspend fun upsertListItemFromRemote(messageLocalId: String, remote: RemoteListItem, secure: Boolean) {
         val remoteId = remote.id ?: return
         val existing = listItemDao.byRemoteId(remoteId)
         val updatedAt = parseRemoteDate(remote.updatedAt)
         if (existing == null) {
-            listItemDao.upsert(ListItemEntity(UUID.randomUUID().toString(), remoteId, messageLocalId, cryptoRepository.tryDecryptString(remote.text), remote.isChecked.asBoolean(), remote.position.asDouble(), LocalSyncStatus.Synced, null, parseRemoteDate(remote.createdAt), updatedAt, null))
+            listItemDao.upsert(ListItemEntity(UUID.randomUUID().toString(), remoteId, messageLocalId, localString(remote.text, secure), remote.isChecked.asBoolean(), remote.position.asDouble(), LocalSyncStatus.Synced, null, parseRemoteDate(remote.createdAt), updatedAt, null))
         } else if (existing.syncStatus == LocalSyncStatus.Synced && updatedAt > existing.updatedAt) {
-            listItemDao.update(existing.copy(text = cryptoRepository.tryDecryptString(remote.text), isChecked = remote.isChecked.asBoolean(), position = remote.position.asDouble(), updatedAt = updatedAt, lastError = null))
+            listItemDao.update(existing.copy(text = localString(remote.text, secure), isChecked = remote.isChecked.asBoolean(), position = remote.position.asDouble(), updatedAt = updatedAt, lastError = null))
         }
     }
 
-    private suspend fun upsertAttachmentFromRemote(messageLocalId: String, remote: RemoteAttachment) {
+    private suspend fun upsertAttachmentFromRemote(messageLocalId: String, remote: RemoteAttachment, secure: Boolean) {
         val remoteId = remote.id ?: return
         val existing = attachmentDao.byRemoteId(remoteId)
         val now = nowMs()
         if (existing == null) {
-            attachmentDao.upsert(AttachmentEntity(UUID.randomUUID().toString(), remoteId, messageLocalId, cryptoRepository.tryDecryptString(remote.fileName), remote.mimeType ?: "application/octet-stream", remote.size.asLong(), remote.fileKind, remote.extension, remote.compressed.asBoolean(), null, remote.url, null, remote.previewUrl, LocalUploadStatus.Uploaded, LocalSyncStatus.Synced, null, parseRemoteDate(remote.createdAt), now, null))
+            attachmentDao.upsert(AttachmentEntity(UUID.randomUUID().toString(), remoteId, messageLocalId, localString(remote.fileName, secure), remote.mimeType ?: "application/octet-stream", remote.size.asLong(), remote.fileKind, remote.extension, remote.compressed.asBoolean(), null, remote.url, null, remote.previewUrl, LocalUploadStatus.Uploaded, LocalSyncStatus.Synced, null, parseRemoteDate(remote.createdAt), now, null))
         } else if (existing.syncStatus == LocalSyncStatus.Synced) {
-            attachmentDao.update(existing.copy(fileName = cryptoRepository.tryDecryptString(remote.fileName), mimeType = remote.mimeType ?: existing.mimeType, size = remote.size.asLong(), fileKind = remote.fileKind ?: existing.fileKind, extension = remote.extension ?: existing.extension, compressed = remote.compressed.asBoolean(), remoteUrl = remote.url, previewUrl = remote.previewUrl ?: existing.previewUrl, uploadStatus = LocalUploadStatus.Uploaded, updatedAt = now, lastError = null))
+            attachmentDao.update(existing.copy(fileName = localString(remote.fileName, secure), mimeType = remote.mimeType ?: existing.mimeType, size = remote.size.asLong(), fileKind = remote.fileKind ?: existing.fileKind, extension = remote.extension ?: existing.extension, compressed = remote.compressed.asBoolean(), remoteUrl = remote.url, previewUrl = remote.previewUrl ?: existing.previewUrl, uploadStatus = LocalUploadStatus.Uploaded, updatedAt = now, lastError = null))
         }
     }
 
     private suspend fun applyMessageRemote(localId: String, remote: RemoteMessage, folderLocalId: String) {
         val row = messageDao.byLocalId(localId) ?: return
-        messageDao.update(row.copy(remoteId = remote.id, content = cryptoRepository.tryDecryptString(remote.content), isFavorite = remote.isFavorite.asBoolean(), updatedAt = parseRemoteDate(remote.updatedAt), syncStatus = LocalSyncStatus.Synced, lastError = null))
+        val secure = channelsRepository.isSecure(folderLocalId)
+        messageDao.update(row.copy(remoteId = remote.id, content = localString(remote.content, secure), isFavorite = remote.isFavorite.asBoolean(), updatedAt = parseRemoteDate(remote.updatedAt), syncStatus = LocalSyncStatus.Synced, lastError = null))
         remote.listItems.orEmpty().forEachIndexed { index, item ->
             val local = listItemDao.allByMessage(localId).getOrNull(index) ?: return@forEachIndexed
-            applyListItemRemote(local.localId, item)
+            applyListItemRemote(local.localId, item, secure)
         }
         remote.attachments.orEmpty().forEachIndexed { index, attachment ->
             val local = attachmentDao.allByMessage(localId).getOrNull(index) ?: return@forEachIndexed
@@ -423,9 +467,61 @@ class MessagesRepository(
         }
     }
 
-    private suspend fun applyListItemRemote(localId: String, remote: RemoteListItem) {
+    private suspend fun applyListItemRemote(localId: String, remote: RemoteListItem, secure: Boolean = false) {
         val row = listItemDao.byLocalId(localId) ?: return
-        listItemDao.update(row.copy(remoteId = remote.id, text = cryptoRepository.tryDecryptString(remote.text), isChecked = remote.isChecked.asBoolean(), position = remote.position.asDouble(), updatedAt = parseRemoteDate(remote.updatedAt), syncStatus = LocalSyncStatus.Synced, lastError = null))
+        listItemDao.update(row.copy(remoteId = remote.id, text = localString(remote.text, secure), isChecked = remote.isChecked.asBoolean(), position = remote.position.asDouble(), updatedAt = parseRemoteDate(remote.updatedAt), syncStatus = LocalSyncStatus.Synced, lastError = null))
+    }
+
+    private suspend fun requireFolderAccessible(folderId: String) {
+        if (channelsRepository.isSecure(folderId) && !secureFoldersRepository.state.value.unlocked) {
+            throw IllegalStateException("Pastas seguras bloqueadas.")
+        }
+    }
+
+    private suspend fun remoteString(value: String, secure: Boolean): String {
+        return if (secure) value else cryptoRepository.encryptString(value)
+    }
+
+    private suspend fun localString(value: String?, secure: Boolean): String {
+        return if (secure) value.orEmpty() else cryptoRepository.tryDecryptString(value)
+    }
+
+    private fun encryptForLocal(value: String, secure: Boolean): String {
+        return if (secure && value.isNotBlank()) secureFoldersRepository.encryptString(value) else value
+    }
+
+    private suspend fun encryptAttachmentBytes(bytes: ByteArray, fileName: String, secure: Boolean): EncryptedFile {
+        return if (secure) {
+            val key = secureFoldersRepository.secureKey() ?: throw IllegalStateException("Pastas seguras bloqueadas.")
+            cryptoRepository.encryptBytesForFileWithKey(bytes, fileName, key, secureFoldersRepository.encryptString(fileName))
+        } else {
+            cryptoRepository.encryptBytesForFile(bytes, fileName)
+        }
+    }
+
+    private suspend fun decryptFileBytes(messageLocalId: String, bytes: ByteArray): ByteArray {
+        val message = messageDao.byLocalId(messageLocalId) ?: return cryptoRepository.decryptBytesFromFile(bytes)
+        val secure = channelsRepository.isSecure(message.folderLocalId)
+        return if (secure) {
+            val key = secureFoldersRepository.secureKey() ?: throw IllegalStateException("Pastas seguras bloqueadas.")
+            cryptoRepository.decryptBytesFromFileWithKey(bytes, key)
+        } else {
+            cryptoRepository.decryptBytesFromFile(bytes)
+        }
+    }
+
+    private suspend fun MessageEntity.toSecureUi(): Message {
+        return copy(content = secureFoldersRepository.tryDecryptString(content)).toUi(
+            listItemDao.byMessage(localId).map { it.copy(text = secureFoldersRepository.tryDecryptString(it.text)).toUi() },
+            attachmentDao.byMessage(localId).map { it.copy(fileName = secureFoldersRepository.tryDecryptString(it.fileName)).toUi() }
+        )
+    }
+
+    private fun MessageEntityWithChildren.toSecureUi(): Message {
+        return message.copy(content = secureFoldersRepository.tryDecryptString(message.content)).toUi(
+            listItems.filter { it.deletedAt == null }.sortedBy { it.position }.map { it.copy(text = secureFoldersRepository.tryDecryptString(it.text)).toUi() },
+            attachments.filter { it.deletedAt == null }.map { it.copy(fileName = secureFoldersRepository.tryDecryptString(it.fileName)).toUi() }
+        )
     }
 
     private suspend fun hardDeleteMessage(localId: String) {

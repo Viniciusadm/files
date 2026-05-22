@@ -36,9 +36,9 @@ class MessagesViewModel(private val channelsRepository: ChannelsRepository) : Vi
         }
     }
 
-    fun createChannel(name: String, icon: String, color: String, onDone: () -> Unit = {}) {
+    fun createChannel(name: String, icon: String, color: String, isSecure: Boolean = false, onDone: () -> Unit = {}) {
         viewModelScope.launch {
-            runCatching { channelsRepository.createChannel(name, icon, color) }
+            runCatching { channelsRepository.createChannel(name, icon, color, isSecure) }
                 .onSuccess {
                     onDone()
                 }

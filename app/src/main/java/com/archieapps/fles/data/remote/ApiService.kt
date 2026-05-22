@@ -24,6 +24,18 @@ interface ApiService {
     @GET("user")
     suspend fun me(): ApiEnvelope<UserResponse>
 
+    @GET("user/secure-folders/meta")
+    suspend fun secureMeta(): ApiEnvelope<SecureFolderMetaResponse>
+
+    @POST("user/secure-folders/pin")
+    suspend fun setupSecurePin(@Body request: SecurePinSetupRequest): ApiEnvelope<SecureFolderMetaResponse>
+
+    @POST("user/secure-folders/verify")
+    suspend fun verifySecurePin(@Body request: SecurePinVerifyRequest): ApiEnvelope<SecureFolderMetaResponse>
+
+    @POST("user/secure-folders/reset")
+    suspend fun resetSecurePin(@Body request: SecurePinSetupRequest): ApiEnvelope<SecureFolderMetaResponse>
+
     @GET("channels")
     suspend fun channels(): ApiEnvelope<List<RemoteChannel>>
 
@@ -135,7 +147,8 @@ data class RemoteChannel(
     val lastMessage: String?,
     val updatedAt: String?,
     val icon: String?,
-    val color: String?
+    val color: String?,
+    val isSecure: Boolean? = null
 )
 
 data class RemoteListItem(
@@ -165,6 +178,7 @@ data class RemoteAttachment(
 data class RemoteMessage(
     val id: String?,
     val folderId: String?,
+    val folderIsSecure: Boolean? = null,
     val type: String?,
     val content: String?,
     val listItems: List<RemoteListItem>?,
@@ -178,7 +192,29 @@ data class CreateFolderRequest(
     val name: String,
     val parentId: String?,
     val icon: String,
-    val color: String
+    val color: String,
+    val isSecure: Boolean = false
+)
+
+data class SecureFolderMetaResponse(
+    val configured: Boolean = false,
+    val keySalt: String? = null,
+    val keyIterations: Int? = null,
+    val keyEnvelope: String? = null,
+    val keyVersion: Int? = null,
+    val pinSetAt: String? = null
+)
+
+data class SecurePinSetupRequest(
+    val pin: String,
+    val keySalt: String,
+    val keyIterations: Int,
+    val keyEnvelope: String,
+    val keyVersion: Int = 1
+)
+
+data class SecurePinVerifyRequest(
+    val pin: String
 )
 
 data class CreateMessageRequest(

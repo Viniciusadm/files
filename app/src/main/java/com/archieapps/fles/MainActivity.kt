@@ -35,6 +35,7 @@ import com.archieapps.fles.ui.screens.KeyScreen
 import com.archieapps.fles.ui.screens.LoginScreen
 import com.archieapps.fles.ui.screens.MessagesScreen
 import com.archieapps.fles.ui.screens.SearchScreen
+import com.archieapps.fles.ui.screens.SecureFoldersScreen
 import com.archieapps.fles.ui.screens.ShareScreen
 import com.archieapps.fles.ui.screens.ThreadScreen
 import com.archieapps.fles.ui.state.UiState
@@ -45,6 +46,7 @@ import com.archieapps.fles.ui.viewmodel.KeyViewModel
 import com.archieapps.fles.ui.viewmodel.LoginViewModel
 import com.archieapps.fles.ui.viewmodel.MessagesViewModel
 import com.archieapps.fles.ui.viewmodel.SearchViewModel
+import com.archieapps.fles.ui.viewmodel.SecureFoldersViewModel
 import com.archieapps.fles.ui.viewmodel.SessionState
 import com.archieapps.fles.ui.viewmodel.SessionViewModel
 import com.archieapps.fles.ui.viewmodel.ShareViewModel
@@ -150,7 +152,12 @@ private fun AuthenticatedNavHost(
     val messagesViewModel = remember { MessagesViewModel(appContainer.channelsRepository) }
     val channelsState by messagesViewModel.state.collectAsState()
     val channels = (channelsState as? UiState.Success)?.data.orEmpty()
-    val createChannel: (String, String, String) -> Unit = { name, icon, color -> messagesViewModel.createChannel(name, icon, color) }
+    val secureState by appContainer.secureFoldersRepository.state.collectAsState()
+    var secureChannels by remember { mutableStateOf(emptyList<com.archieapps.fles.ui.model.Channel>()) }
+    LaunchedEffect(Unit) {
+        appContainer.channelsRepository.observeSecureChannels().collect { secureChannels = it }
+    }
+    val createChannel: (String, String, String, Boolean) -> Unit = { name, icon, color, isSecure -> messagesViewModel.createChannel(name, icon, color, isSecure) }
 
     NavHost(
         navController = navController,
@@ -161,7 +168,7 @@ private fun AuthenticatedNavHost(
         popExitTransition = { ExitTransition.None }
     ) {
         composable(AppRoutes.Messages) {
-            Shell(navController, MainSection.Messages, null, channels, createChannel, onLogout, syncRuntimeState) { openDrawer ->
+            Shell(navController, MainSection.Messages, null, channels, secureChannels, secureState.unlocked, createChannel, onLogout, syncRuntimeState) { openDrawer ->
                 MessagesScreen(
                     state = channelsState,
                     openDrawer = openDrawer,
@@ -181,11 +188,11 @@ private fun AuthenticatedNavHost(
             val action by threadViewModel.action.collectAsState()
             var keyConfigured by remember { mutableStateOf(false) }
             LaunchedEffect(Unit) { keyConfigured = appContainer.cryptoRepository.hasKey() }
-            Shell(navController, MainSection.Messages, folderId, channels, createChannel, onLogout, syncRuntimeState) { openDrawer ->
+            Shell(navController, MainSection.Messages, folderId, channels, secureChannels, secureState.unlocked, createChannel, onLogout, syncRuntimeState) { openDrawer ->
                 ThreadScreen(
                     state = state,
                     action = action,
-                    channels = channels,
+                    channels = channels + secureChannels,
                     attachmentIo = appContainer.attachmentIo,
                     keyConfigured = keyConfigured,
                     openDrawer = openDrawer,
@@ -212,7 +219,7 @@ private fun AuthenticatedNavHost(
             }
             val state by filesViewModel.state.collectAsState()
             val context = LocalContext.current
-            Shell(navController, MainSection.Files, null, channels, createChannel, onLogout, syncRuntimeState) { openDrawer ->
+            Shell(navController, MainSection.Files, null, channels, secureChannels, secureState.unlocked, createChannel, onLogout, syncRuntimeState) { openDrawer ->
                 FilesScreen(
                     state = state,
                     openDrawer = openDrawer,
@@ -235,7 +242,7 @@ private fun AuthenticatedNavHost(
             }
             val state by filesViewModel.state.collectAsState()
             val context = LocalContext.current
-            Shell(navController, MainSection.Files, folderId, channels, createChannel, onLogout, syncRuntimeState) { openDrawer ->
+            Shell(navController, MainSection.Files, folderId, channels, secureChannels, secureState.unlocked, createChannel, onLogout, syncRuntimeState) { openDrawer ->
                 FilesScreen(
                     state = state,
                     openDrawer = openDrawer,
@@ -254,7 +261,7 @@ private fun AuthenticatedNavHost(
             }
             val state by filesViewModel.state.collectAsState()
             val context = LocalContext.current
-            Shell(navController, MainSection.Favorites, null, channels, createChannel, onLogout, syncRuntimeState) { openDrawer ->
+            Shell(navController, MainSection.Favorites, null, channels, secureChannels, secureState.unlocked, createChannel, onLogout, syncRuntimeState) { openDrawer ->
                 FilesScreen(
                     state = state,
                     openDrawer = openDrawer,
@@ -277,7 +284,7 @@ private fun AuthenticatedNavHost(
                 SearchViewModel(initialQuery, appContainer.messagesRepository)
             }
             val state by searchViewModel.state.collectAsState()
-            Shell(navController, MainSection.Search, null, channels, createChannel, onLogout, syncRuntimeState) { openDrawer ->
+            Shell(navController, MainSection.Search, null, channels, secureChannels, secureState.unlocked, createChannel, onLogout, syncRuntimeState) { openDrawer ->
                 SearchScreen(
                     state = state,
                     openDrawer = openDrawer,
@@ -289,7 +296,7 @@ private fun AuthenticatedNavHost(
         composable(AppRoutes.Key) {
             val keyViewModel = remember { KeyViewModel(appContainer.cryptoRepository) }
             val state by keyViewModel.state.collectAsState()
-            Shell(navController, MainSection.Key, null, channels, createChannel, onLogout, syncRuntimeState) { openDrawer ->
+            Shell(navController, MainSection.Key, null, channels, secureChannels, secureState.unlocked, createChannel, onLogout, syncRuntimeState) { openDrawer ->
                 KeyScreen(
                     state = state,
                     openDrawer = openDrawer,
@@ -297,6 +304,21 @@ private fun AuthenticatedNavHost(
                     onSave = keyViewModel::save,
                     onGenerate = keyViewModel::generate,
                     onClear = keyViewModel::clear
+                )
+            }
+        }
+        composable(AppRoutes.SecureFolders) {
+            val secureViewModel = remember { SecureFoldersViewModel(appContainer.secureFoldersRepository) }
+            val state by secureViewModel.state.collectAsState()
+            Shell(navController, MainSection.Files, null, channels, secureChannels, secureState.unlocked, createChannel, onLogout, syncRuntimeState) { openDrawer ->
+                SecureFoldersScreen(
+                    state = state,
+                    openDrawer = openDrawer,
+                    onPinChange = secureViewModel::onPinChange,
+                    onSetup = { secureViewModel.setup { navController.navigate(AppRoutes.Files) } },
+                    onUnlock = { secureViewModel.unlock { navController.navigate(AppRoutes.Files) } },
+                    onReset = { secureViewModel.reset { navController.navigate(AppRoutes.Files) } },
+                    onLock = secureViewModel::lock
                 )
             }
         }
@@ -313,7 +335,7 @@ private fun AuthenticatedNavHost(
                 },
                 onClose = { navController.navigate(AppRoutes.Messages) },
                 onThreadClick = { navController.navigate(AppRoutes.thread(it)) },
-                onCreateChannel = createChannel
+                onCreateChannel = { name, icon, color -> createChannel(name, icon, color, false) }
             )
         }
     }
@@ -325,7 +347,9 @@ private fun Shell(
     section: MainSection,
     activeFolderId: String?,
     channels: List<com.archieapps.fles.ui.model.Channel>,
-    onCreateChannel: (String, String, String) -> Unit,
+    secureChannels: List<com.archieapps.fles.ui.model.Channel>,
+    secureUnlocked: Boolean,
+    onCreateChannel: (String, String, String, Boolean) -> Unit,
     onLogout: () -> Unit,
     syncRuntimeState: com.archieapps.fles.sync.SyncRuntimeState,
     content: @Composable (openDrawer: () -> Unit) -> Unit
@@ -334,12 +358,15 @@ private fun Shell(
         section = section,
         activeFolderId = activeFolderId,
         channels = channels,
+        secureChannels = secureChannels,
+        secureUnlocked = secureUnlocked,
         onNavigateMessages = { navController.navigate(AppRoutes.Messages) },
         onNavigateThread = { navController.navigate(AppRoutes.thread(it)) },
         onNavigateFiles = { navController.navigate(AppRoutes.Files) },
         onNavigateFolderFiles = { navController.navigate(AppRoutes.folderFiles(it)) },
         onNavigateFavorites = { navController.navigate(AppRoutes.Favorites) },
         onNavigateKey = { navController.navigate(AppRoutes.Key) },
+        onNavigateSecureFolders = { navController.navigate(AppRoutes.SecureFolders) },
         onNavigateSearch = { navController.navigate(AppRoutes.search(it)) },
         onCreateChannel = onCreateChannel,
         onLogout = onLogout,

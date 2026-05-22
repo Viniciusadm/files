@@ -23,6 +23,7 @@ suspend fun RemoteChannel.toUi(cryptoRepository: CryptoRepository): Channel {
         updatedAt = updatedAt.orEmpty(),
         icon = icon ?: "Folder",
         color = parseColor(color),
+        isSecure = isSecure == true,
         syncStatus = SyncStatus.Synced
     )
 }

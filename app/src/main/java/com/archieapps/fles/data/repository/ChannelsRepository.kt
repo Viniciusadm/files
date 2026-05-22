@@ -14,43 +14,65 @@ import com.archieapps.fles.sync.SyncQueueRepository
 import com.archieapps.fles.sync.SyncScheduler
 import com.archieapps.fles.ui.model.Channel
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.map
 import java.util.UUID
 
 class ChannelsRepository(
     private val apiService: ApiService,
     private val cryptoRepository: CryptoRepository,
+    private val secureFoldersRepository: SecureFoldersRepository,
     private val channelDao: ChannelDao,
     private val queueRepository: SyncQueueRepository,
     private val scheduler: SyncScheduler
 ) {
     fun observeChannels(): Flow<List<Channel>> {
-        return channelDao.observeActive().map { rows -> rows.map { it.toUi() } }
+        return channelDao.observeActive(false).map { rows -> rows.map { it.toUi() } }
+    }
+
+    fun observeSecureChannels(): Flow<List<Channel>> {
+        return combine(channelDao.observeSecureActive(), secureFoldersRepository.state) { rows, secureState ->
+            if (!secureState.unlocked) emptyList() else rows.map { it.toSecureUi() }
+        }
     }
 
     suspend fun getChannels(): List<Channel> {
-        return channelDao.active().map { it.toUi() }
+        return channelDao.active(false).map { it.toUi() }
+    }
+
+    suspend fun getSecureChannels(): List<Channel> {
+        if (!secureFoldersRepository.state.value.unlocked) return emptyList()
+        return channelDao.secureActive().map { it.toSecureUi() }
     }
 
     suspend fun getChannel(id: String): Channel? {
-        return channelDao.byLocalId(id)?.toUi()
+        val row = channelDao.byLocalId(id) ?: return null
+        if (row.isSecure && !secureFoldersRepository.state.value.unlocked) return null
+        return if (row.isSecure) row.toSecureUi() else row.toUi()
     }
 
     suspend fun getRemoteId(localId: String): String? {
         return channelDao.byLocalId(localId)?.remoteId
     }
 
-    suspend fun createChannel(name: String, icon: String, color: String): Channel {
+    suspend fun isSecure(localId: String): Boolean {
+        return channelDao.byLocalId(localId)?.isSecure == true
+    }
+
+    suspend fun createChannel(name: String, icon: String, color: String, isSecure: Boolean = false): Channel {
         val trimmed = name.trim()
         require(trimmed.isNotBlank()) { "Informe um nome" }
+        if (isSecure && !secureFoldersRepository.state.value.unlocked) throw IllegalStateException("Pastas seguras bloqueadas.")
         val now = nowMs()
         val localId = UUID.randomUUID().toString()
+        val storedName = if (isSecure) secureFoldersRepository.encryptString(trimmed) else trimmed
         val entity = ChannelEntity(
             localId = localId,
             remoteId = null,
-            name = trimmed,
+            name = storedName,
             icon = icon,
             color = color,
+            isSecure = isSecure,
             parentLocalId = null,
             lastMessagePreview = null,
             syncStatus = LocalSyncStatus.PendingCreate,
@@ -64,10 +86,10 @@ class ChannelsRepository(
             opType = "create",
             entity = "channel",
             entityLocalId = localId,
-            payload = "{\"name\":\"${trimmed.jsonEscape()}\",\"icon\":\"${icon.jsonEscape()}\",\"color\":\"${color.jsonEscape()}\"}"
+            payload = "{\"name\":\"${trimmed.jsonEscape()}\",\"icon\":\"${icon.jsonEscape()}\",\"color\":\"${color.jsonEscape()}\",\"isSecure\":$isSecure}"
         )
         scheduler.scheduleNow()
-        return entity.toUi()
+        return if (isSecure) entity.toSecureUi() else entity.toUi()
     }
 
     suspend fun deleteChannel(id: String) {
@@ -82,7 +104,7 @@ class ChannelsRepository(
         val remote = apiService.channels().requireBody()
         val remoteIds = remote.mapNotNull { it.id }.toSet()
         remote.forEach { upsertFromRemote(it) }
-        channelDao.active().forEach { local ->
+        channelDao.active(true).forEach { local ->
             if (local.remoteId != null && local.remoteId !in remoteIds && local.syncStatus == LocalSyncStatus.Synced) {
                 val now = nowMs()
                 channelDao.update(local.copy(deletedAt = now, updatedAt = now))
@@ -94,10 +116,11 @@ class ChannelsRepository(
         val local = channelDao.byLocalId(localId) ?: return
         val remote = apiService.createFolder(
             CreateFolderRequest(
-                name = cryptoRepository.encryptString(local.name),
+                name = if (local.isSecure) local.name else cryptoRepository.encryptString(local.name),
                 parentId = null,
                 icon = local.icon ?: "Folder",
-                color = local.color ?: "#3390ec"
+                color = local.color ?: "#3390ec",
+                isSecure = local.isSecure
             )
         ).requireBody()
         val remoteId = remote.id ?: return
@@ -131,10 +154,11 @@ class ChannelsRepository(
             if (existing.syncStatus == LocalSyncStatus.Synced && remoteUpdatedAt > existing.updatedAt) {
                 channelDao.update(
                     existing.copy(
-                        name = cryptoRepository.tryDecryptString(remote.name),
+                        name = if (remote.isSecure == true) remote.name.orEmpty() else cryptoRepository.tryDecryptString(remote.name),
                         icon = remote.icon ?: existing.icon,
                         color = remote.color ?: existing.color,
-                        lastMessagePreview = cryptoRepository.tryDecryptString(remote.lastMessage),
+                        isSecure = remote.isSecure == true,
+                        lastMessagePreview = if (remote.isSecure == true) remote.lastMessage else cryptoRepository.tryDecryptString(remote.lastMessage),
                         updatedAt = remoteUpdatedAt,
                         lastError = null
                     )
@@ -148,11 +172,12 @@ class ChannelsRepository(
             ChannelEntity(
                 localId = localId,
                 remoteId = remoteId,
-                name = cryptoRepository.tryDecryptString(remote.name),
+                name = if (remote.isSecure == true) remote.name.orEmpty() else cryptoRepository.tryDecryptString(remote.name),
                 icon = remote.icon,
                 color = remote.color,
+                isSecure = remote.isSecure == true,
                 parentLocalId = null,
-                lastMessagePreview = cryptoRepository.tryDecryptString(remote.lastMessage),
+                lastMessagePreview = if (remote.isSecure == true) remote.lastMessage else cryptoRepository.tryDecryptString(remote.lastMessage),
                 syncStatus = LocalSyncStatus.Synced,
                 lastError = null,
                 createdAt = now,
@@ -161,6 +186,13 @@ class ChannelsRepository(
             )
         )
         return localId
+    }
+
+    private fun ChannelEntity.toSecureUi(): Channel {
+        return copy(
+            name = secureFoldersRepository.tryDecryptString(name),
+            lastMessagePreview = secureFoldersRepository.tryDecryptString(lastMessagePreview)
+        ).toUi()
     }
 }
 
