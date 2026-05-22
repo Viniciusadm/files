@@ -18,14 +18,8 @@ import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.Message
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.layout.onSizeChanged
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import com.archieapps.fles.ui.components.ChatHeader
 import com.archieapps.fles.ui.components.Composer
@@ -93,9 +87,6 @@ fun ThreadScreen(
     onReorderListItems: (String, List<String>) -> Unit,
     onDownload: suspend (Attachment) -> File
 ) {
-    val density = LocalDensity.current
-    var composerHeight by remember { mutableStateOf(0.dp) }
-
     Box(modifier = Modifier.fillMaxSize().background(FlesTheme.colors.chatBg)) {
         when (state) {
             UiState.Loading -> Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -112,7 +103,7 @@ fun ThreadScreen(
                             folderId = state.data.channel.id,
                             channels = channels,
                             modifier = Modifier.fillMaxSize(),
-                            bottomPadding = composerHeight + 16.dp,
+                            bottomPadding = 16.dp,
                             onToggleFavorite = onToggleFavorite,
                             onDelete = onDeleteMessage,
                             onMove = onMoveMessage,
@@ -124,14 +115,6 @@ fun ThreadScreen(
                             onDownload = onDownload
                         )
                     }
-                }
-                Box(
-                    modifier = Modifier
-                        .align(Alignment.BottomCenter)
-                        .fillMaxWidth()
-                        .navigationBarsPadding()
-                        .imePadding()
-                ) {
                     Composer(
                         folderId = state.data.channel.id,
                         keyConfigured = keyConfigured,
@@ -140,9 +123,10 @@ fun ThreadScreen(
                         onSend = onSend,
                         onCreateList = onCreateList,
                         onConfigureKey = onConfigureKey,
-                        modifier = Modifier.onSizeChanged {
-                            composerHeight = with(density) { it.height.toDp() }
-                        }
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .navigationBarsPadding()
+                            .imePadding()
                     )
                 }
             }
