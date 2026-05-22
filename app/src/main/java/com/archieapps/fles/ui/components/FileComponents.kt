@@ -61,6 +61,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
@@ -207,6 +208,7 @@ fun FilesToolbar(
 fun FileGridCard(file: FileItem, modifier: Modifier = Modifier, onClick: () -> Unit = {}) {
     val colors = FlesTheme.colors
     val style = kindStyle(file.kind)
+    val previewBitmap = rememberGridPreviewBitmap(file)
     Column(
         modifier = modifier
             .shadow(1.dp, RoundedCornerShape(FlesTheme.radius.x2l))
@@ -221,7 +223,14 @@ fun FileGridCard(file: FileItem, modifier: Modifier = Modifier, onClick: () -> U
                 .aspectRatio(4f / 3f)
                 .background(file.previewColor ?: colors.muted)
         ) {
-            if (file.previewColor == null) {
+            if (previewBitmap != null) {
+                Image(
+                    bitmap = previewBitmap,
+                    contentDescription = file.name,
+                    modifier = Modifier.fillMaxSize(),
+                    contentScale = ContentScale.Crop
+                )
+            } else {
                 FileIconBadge(file.kind, large = true, modifier = Modifier.align(Alignment.Center))
             }
             Surface(
@@ -485,6 +494,21 @@ fun formatDate(iso: String): String {
 private fun FileItem.existingLocalFile(): File? {
     val path = localPath?.removePrefix("file://") ?: return null
     return File(path).takeIf { it.exists() }
+}
+
+@Composable
+private fun rememberGridPreviewBitmap(file: FileItem): ImageBitmap? {
+    val source = file.previewLocalPath ?: file.localPath
+    var bitmap by remember(file.id, source) { mutableStateOf<ImageBitmap?>(null) }
+    LaunchedEffect(file.id, source) {
+        bitmap = null
+        if (!file.isImagePreviewable()) return@LaunchedEffect
+        val path = source?.removePrefix("file://") ?: return@LaunchedEffect
+        bitmap = withContext(Dispatchers.IO) {
+            BitmapFactory.decodeFile(path)?.asImageBitmap()
+        }
+    }
+    return bitmap
 }
 
 private fun FileItem.isImagePreviewable(): Boolean {
