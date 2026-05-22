@@ -24,6 +24,10 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
@@ -31,6 +35,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.archieapps.fles.ui.components.EmptyState
+import com.archieapps.fles.ui.components.FileDetailsDialog
 import com.archieapps.fles.ui.components.FileGridCard
 import com.archieapps.fles.ui.components.FileListRow
 import com.archieapps.fles.ui.components.FilesToolbar
@@ -39,8 +44,10 @@ import com.archieapps.fles.ui.components.FolderAvatar
 import com.archieapps.fles.ui.components.IconButtonBox
 import com.archieapps.fles.ui.components.folderIcon
 import com.archieapps.fles.ui.model.Channel
+import com.archieapps.fles.ui.model.FileItem
 import com.archieapps.fles.ui.theme.FlesTheme
 import com.archieapps.fles.ui.viewmodel.FilesUiState
+import java.io.File
 
 @Composable
 fun FilesScreen(
@@ -50,7 +57,8 @@ fun FilesScreen(
     onModeChange: (FilesViewMode) -> Unit,
     onFavoritesToggle: () -> Unit,
     onKindChange: (com.archieapps.fles.ui.model.FileKind?) -> Unit,
-    onFileClick: (com.archieapps.fles.ui.model.FileItem) -> Unit,
+    onEnsureLocalFile: suspend (FileItem) -> File,
+    onOpenFile: suspend (FileItem, File) -> Unit,
     favoritesOnlyInitial: Boolean = false
 ) {
     FilesScaffold(
@@ -60,7 +68,8 @@ fun FilesScreen(
         onModeChange = onModeChange,
         onFavoritesToggle = onFavoritesToggle,
         onKindChange = onKindChange,
-        onFileClick = onFileClick,
+        onEnsureLocalFile = onEnsureLocalFile,
+        onOpenFile = onOpenFile,
         emptyTitle = when {
             favoritesOnlyInitial -> "Sem favoritos"
             state.folder != null -> "Sem arquivos nesta pasta"
@@ -77,10 +86,12 @@ private fun FilesScaffold(
     onModeChange: (FilesViewMode) -> Unit,
     onFavoritesToggle: () -> Unit,
     onKindChange: (com.archieapps.fles.ui.model.FileKind?) -> Unit,
-    onFileClick: (com.archieapps.fles.ui.model.FileItem) -> Unit,
+    onEnsureLocalFile: suspend (FileItem) -> File,
+    onOpenFile: suspend (FileItem, File) -> Unit,
     emptyTitle: String
 ) {
     val colors = FlesTheme.colors
+    var selectedFile by remember { mutableStateOf<FileItem?>(null) }
 
     Column(modifier = Modifier.fillMaxSize().background(colors.background)) {
         FilesHeader(openDrawer = openDrawer, folder = state.folder)
@@ -111,16 +122,24 @@ private fun FilesScaffold(
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 items(state.files, key = { it.id }) {
-                    FileGridCard(file = it, onClick = { onFileClick(it) })
+                    FileGridCard(file = it, onClick = { selectedFile = it })
                 }
             }
         } else {
             LazyColumn(modifier = Modifier.fillMaxSize()) {
                 items(state.files, key = { it.id }) {
-                    FileListRow(file = it, onClick = { onFileClick(it) })
+                    FileListRow(file = it, onClick = { selectedFile = it })
                 }
             }
         }
+    }
+    selectedFile?.let { file ->
+        FileDetailsDialog(
+            file = file,
+            onClose = { selectedFile = null },
+            onEnsureLocalFile = onEnsureLocalFile,
+            onOpenFile = onOpenFile
+        )
     }
 }
 

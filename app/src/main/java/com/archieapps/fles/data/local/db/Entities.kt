@@ -1,9 +1,11 @@
 package com.archieapps.fles.data.local.db
 
 import androidx.room.ColumnInfo
+import androidx.room.Embedded
 import androidx.room.Entity
 import androidx.room.Index
 import androidx.room.PrimaryKey
+import androidx.room.Relation
 
 @Entity(tableName = "users")
 data class UserEntity(
@@ -184,4 +186,18 @@ data class MessageWithChildren(
     @ColumnInfo(name = "attachmentLastError") val attachmentLastError: String?,
     @ColumnInfo(name = "attachmentCreatedAt") val attachmentCreatedAt: Long?,
     @ColumnInfo(name = "attachmentUpdatedAt") val attachmentUpdatedAt: Long?
+)
+
+data class MessageEntityWithChildren(
+    @Embedded val message: MessageEntity,
+    @Relation(
+        parentColumn = "localId",
+        entityColumn = "messageLocalId"
+    )
+    val listItems: List<ListItemEntity>,
+    @Relation(
+        parentColumn = "localId",
+        entityColumn = "messageLocalId"
+    )
+    val attachments: List<AttachmentEntity>
 )

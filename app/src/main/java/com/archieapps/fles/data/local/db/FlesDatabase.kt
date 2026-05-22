@@ -30,12 +30,19 @@ abstract class FlesDatabase : RoomDatabase() {
     abstract fun syncStateDao(): SyncStateDao
 
     companion object {
+        @Volatile private var instance: FlesDatabase? = null
+
         fun create(context: Context): FlesDatabase {
-            return Room.databaseBuilder(
-                context.applicationContext,
-                FlesDatabase::class.java,
-                "fles.db"
-            ).build()
+            return instance ?: synchronized(this) {
+                instance ?: Room.databaseBuilder(
+                    context.applicationContext,
+                    FlesDatabase::class.java,
+                    "fles.db"
+                )
+                    .enableMultiInstanceInvalidation()
+                    .build()
+                    .also { instance = it }
+            }
         }
     }
 }

@@ -1,27 +1,37 @@
 package com.archieapps.fles.ui.components
 
+import android.graphics.BitmapFactory
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Archive
 import androidx.compose.material.icons.filled.AudioFile
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Code
 import androidx.compose.material.icons.filled.Description
+import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.GridView
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.InsertDriveFile
@@ -35,24 +45,40 @@ import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.TableChart
 import androidx.compose.material.icons.filled.ViewList
 import androidx.compose.material.icons.filled.Videocam
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import com.archieapps.fles.ui.model.FileKind
 import com.archieapps.fles.ui.model.FileItem
+import com.archieapps.fles.ui.model.SyncStatus
 import com.archieapps.fles.ui.theme.FlesTheme
 import com.archieapps.fles.ui.theme.withAlpha
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.io.File
 
 enum class FilesViewMode {
     Grid,
@@ -117,14 +143,18 @@ fun FilesToolbar(
             .padding(12.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-            AppInput(
-                value = query,
-                onValueChange = onQueryChange,
-                placeholder = "Buscar arquivos por nome, tipo ou pasta...",
-                leadingIcon = Icons.Filled.Search,
-                modifier = Modifier.weight(1f)
-            )
+        AppInput(
+            value = query,
+            onValueChange = onQueryChange,
+            placeholder = "Buscar arquivos por nome, tipo ou pasta...",
+            leadingIcon = Icons.Filled.Search,
+            modifier = Modifier.fillMaxWidth()
+        )
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
             AppButton("Ordenar", onClick = {}, variant = AppButtonVariant.Outline, leadingIcon = Icons.Filled.Sort)
             Row(
                 modifier = Modifier
@@ -147,7 +177,12 @@ fun FilesToolbar(
                 )
             }
         }
-        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
             Surface(
                 shape = RoundedCornerShape(FlesTheme.radius.full),
                 color = if (favoritesOnly) Color(0xFFEAB308).withAlpha(0.1f) else Color.Transparent,
@@ -252,6 +287,189 @@ fun FileListRow(file: FileItem, modifier: Modifier = Modifier, onClick: () -> Un
     }
 }
 
+@Composable
+fun FileDetailsDialog(
+    file: FileItem,
+    onClose: () -> Unit,
+    onEnsureLocalFile: suspend (FileItem) -> File,
+    onOpenFile: suspend (FileItem, File) -> Unit
+) {
+    val colors = FlesTheme.colors
+    val scrollState = rememberScrollState()
+    val scope = rememberCoroutineScope()
+    val previewable = file.isImagePreviewable() || file.isTextPreviewable()
+    var localFile by remember(file.id, file.localPath) { mutableStateOf(file.existingLocalFile()) }
+    var previewLoading by remember(file.id) { mutableStateOf(false) }
+    var previewError by remember(file.id) { mutableStateOf<String?>(null) }
+    var previewText by remember(file.id) { mutableStateOf<String?>(null) }
+    var opening by remember(file.id) { mutableStateOf(false) }
+    var openError by remember(file.id) { mutableStateOf<String?>(null) }
+
+    LaunchedEffect(file.id, file.localPath) {
+        if (!previewable) return@LaunchedEffect
+        previewLoading = true
+        previewError = null
+        previewText = null
+        val result = runCatching {
+            val loaded = localFile ?: onEnsureLocalFile(file)
+            loaded to if (file.isTextPreviewable()) loaded.readTextPreview() else null
+        }
+        result.onSuccess { (loaded, text) ->
+            localFile = loaded
+            previewText = text
+        }.onFailure {
+            previewError = it.message ?: "Falha ao carregar preview"
+        }
+        previewLoading = false
+    }
+
+    Dialog(onDismissRequest = onClose, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+        Surface(
+            modifier = Modifier
+                .fillMaxWidth(0.92f)
+                .widthIn(max = 560.dp)
+                .padding(16.dp),
+            shape = RoundedCornerShape(FlesTheme.radius.x2l),
+            color = colors.card,
+            border = BorderStroke(1.dp, colors.border)
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = 720.dp)
+                    .padding(16.dp)
+                    .verticalScroll(scrollState),
+                verticalArrangement = Arrangement.spacedBy(14.dp)
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    FileIconBadge(file.kind)
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(file.name, color = colors.foreground, fontSize = 16.sp, lineHeight = 22.sp, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                        Text(kindStyle(file.kind).label, color = colors.mutedForeground, fontSize = 12.sp)
+                    }
+                    IconButtonBox(Icons.Filled.Close, onClick = onClose, size = 34.dp, iconSize = 18.dp)
+                }
+
+                FilePreviewPanel(
+                    file = file,
+                    localFile = localFile,
+                    previewText = previewText,
+                    loading = previewLoading,
+                    error = previewError
+                )
+
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    FileDetailRow("Tamanho", formatBytes(file.size))
+                    FileDetailRow("Pasta", file.folderName)
+                    FileDetailRow("Data", formatDate(file.createdAt))
+                    FileDetailRow("Formato", file.mimeType.ifBlank { "application/octet-stream" })
+                    FileDetailRow("Estado", file.syncStatus.label())
+                    file.lastError?.takeIf { it.isNotBlank() }?.let { FileDetailRow("Erro", it, error = true) }
+                    openError?.let { FileDetailRow("Abertura", it, error = true) }
+                }
+
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    AppButton(
+                        text = "Fechar",
+                        onClick = onClose,
+                        modifier = Modifier.weight(1f),
+                        variant = AppButtonVariant.Outline
+                    )
+                    AppButton(
+                        text = "Baixar",
+                        onClick = {
+                            if (opening) return@AppButton
+                            opening = true
+                            openError = null
+                            scope.launch {
+                                runCatching {
+                                    val loaded = localFile ?: onEnsureLocalFile(file)
+                                    localFile = loaded
+                                    onOpenFile(file, loaded)
+                                }.onFailure {
+                                    openError = it.message ?: "Falha ao abrir arquivo"
+                                }
+                                opening = false
+                            }
+                        },
+                        modifier = Modifier.weight(1f),
+                        loading = opening,
+                        leadingIcon = Icons.Filled.Download
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun FilePreviewPanel(
+    file: FileItem,
+    localFile: File?,
+    previewText: String?,
+    loading: Boolean,
+    error: String?
+) {
+    val colors = FlesTheme.colors
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .heightIn(min = 180.dp, max = 320.dp)
+            .clip(RoundedCornerShape(FlesTheme.radius.xl))
+            .background(colors.muted.withAlpha(0.6f))
+            .border(BorderStroke(0.5.dp, colors.border), RoundedCornerShape(FlesTheme.radius.xl))
+            .padding(12.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        when {
+            loading -> CircularProgressIndicator(color = colors.primary)
+            error != null -> Text(error, color = colors.destructive, fontSize = 13.sp, lineHeight = 18.sp)
+            file.isImagePreviewable() -> {
+                val bitmap = remember(localFile?.absolutePath) {
+                    localFile?.absolutePath?.let { BitmapFactory.decodeFile(it)?.asImageBitmap() }
+                }
+                if (bitmap != null) {
+                    Image(bitmap = bitmap, contentDescription = file.name, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Fit)
+                } else {
+                    Text("Preview indisponível", color = colors.mutedForeground, fontSize = 13.sp)
+                }
+            }
+            file.isTextPreviewable() -> {
+                Text(
+                    previewText ?: "Preview indisponível",
+                    modifier = Modifier.fillMaxWidth(),
+                    color = colors.foreground,
+                    fontSize = 13.sp,
+                    lineHeight = 19.sp,
+                    maxLines = 12,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+            else -> Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                FileIconBadge(file.kind, large = true)
+                Text("Preview não disponível para este tipo de arquivo.", color = colors.mutedForeground, fontSize = 13.sp)
+            }
+        }
+    }
+}
+
+@Composable
+private fun FileDetailRow(label: String, value: String, error: Boolean = false) {
+    val colors = FlesTheme.colors
+    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        Text(label, modifier = Modifier.width(78.dp), color = colors.mutedForeground, fontSize = 12.sp, fontWeight = FontWeight.Medium)
+        Text(
+            value,
+            modifier = Modifier.weight(1f),
+            color = if (error) colors.destructive else colors.foreground,
+            fontSize = 12.sp,
+            lineHeight = 17.sp,
+            maxLines = 3,
+            overflow = TextOverflow.Ellipsis
+        )
+    }
+}
+
 fun formatBytes(bytes: Long): String {
     if (bytes <= 0) return "—"
     if (bytes < 1024) return "$bytes B"
@@ -262,4 +480,43 @@ fun formatBytes(bytes: Long): String {
 
 fun formatDate(iso: String): String {
     return iso.substring(8, 10) + "/" + iso.substring(5, 7) + "/" + iso.substring(0, 4)
+}
+
+private fun FileItem.existingLocalFile(): File? {
+    val path = localPath?.removePrefix("file://") ?: return null
+    return File(path).takeIf { it.exists() }
+}
+
+private fun FileItem.isImagePreviewable(): Boolean {
+    return kind == FileKind.Image || mimeType.startsWith("image/")
+}
+
+private fun FileItem.isTextPreviewable(): Boolean {
+    val ext = extension.lowercase()
+    return kind == FileKind.Text ||
+        kind == FileKind.Code ||
+        mimeType.startsWith("text/") ||
+        ext in setOf("txt", "md", "json", "xml", "csv", "log", "kt", "java", "js", "ts", "tsx", "jsx", "css", "html")
+}
+
+private suspend fun File.readTextPreview(): String = withContext(Dispatchers.IO) {
+    inputStream().use { input ->
+        val bytes = ByteArray(12_000)
+        val count = input.read(bytes).coerceAtLeast(0)
+        val text = bytes.decodeToString(0, count).replace("\u0000", "")
+        if (length() > count) "$text\n..." else text
+    }.ifBlank { "Arquivo de texto vazio." }
+}
+
+private fun SyncStatus.label(): String {
+    return when (this) {
+        SyncStatus.Synced -> "Disponível"
+        SyncStatus.PendingCreate -> "Aguardando criação"
+        SyncStatus.PendingUpdate -> "Aguardando atualização"
+        SyncStatus.PendingDelete -> "Aguardando exclusão"
+        SyncStatus.PendingUpload -> "Aguardando envio"
+        SyncStatus.Uploading -> "Enviando"
+        SyncStatus.Downloading -> "Baixando"
+        SyncStatus.Failed -> "Falhou"
+    }
 }

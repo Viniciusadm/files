@@ -4,6 +4,8 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
@@ -48,8 +50,6 @@ import com.archieapps.fles.ui.viewmodel.SessionViewModel
 import com.archieapps.fles.ui.viewmodel.ShareViewModel
 import com.archieapps.fles.ui.viewmodel.SharePayload
 import com.archieapps.fles.ui.viewmodel.ThreadViewModel
-import kotlinx.coroutines.launch
-import androidx.compose.runtime.rememberCoroutineScope
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -102,7 +102,14 @@ private fun AuthNavHost(
     onAuthenticated: () -> Unit
 ) {
     val navController = rememberNavController()
-    NavHost(navController = navController, startDestination = AppRoutes.Login) {
+    NavHost(
+        navController = navController,
+        startDestination = AppRoutes.Login,
+        enterTransition = { EnterTransition.None },
+        exitTransition = { ExitTransition.None },
+        popEnterTransition = { EnterTransition.None },
+        popExitTransition = { ExitTransition.None }
+    ) {
         composable(AppRoutes.Login) {
             val loginViewModel = remember { LoginViewModel(appContainer.authRepository) }
             val state by loginViewModel.state.collectAsState()
@@ -145,7 +152,14 @@ private fun AuthenticatedNavHost(
     val channels = (channelsState as? UiState.Success)?.data.orEmpty()
     val createChannel: (String, String, String) -> Unit = { name, icon, color -> messagesViewModel.createChannel(name, icon, color) }
 
-    NavHost(navController = navController, startDestination = if (initialShare != null) AppRoutes.Share else AppRoutes.Messages) {
+    NavHost(
+        navController = navController,
+        startDestination = if (initialShare != null) AppRoutes.Share else AppRoutes.Messages,
+        enterTransition = { EnterTransition.None },
+        exitTransition = { ExitTransition.None },
+        popEnterTransition = { EnterTransition.None },
+        popExitTransition = { ExitTransition.None }
+    ) {
         composable(AppRoutes.Messages) {
             Shell(navController, MainSection.Messages, null, channels, createChannel, onLogout, syncRuntimeState) { openDrawer ->
                 MessagesScreen(
@@ -198,7 +212,6 @@ private fun AuthenticatedNavHost(
             }
             val state by filesViewModel.state.collectAsState()
             val context = LocalContext.current
-            val scope = rememberCoroutineScope()
             Shell(navController, MainSection.Files, null, channels, createChannel, onLogout, syncRuntimeState) { openDrawer ->
                 FilesScreen(
                     state = state,
@@ -207,7 +220,8 @@ private fun AuthenticatedNavHost(
                     onModeChange = filesViewModel::onModeChange,
                     onFavoritesToggle = filesViewModel::onFavoritesToggle,
                     onKindChange = filesViewModel::onKindChange,
-                    onFileClick = { file -> scope.launch { openFile(context, filesViewModel.downloadToCache(file), file.mimeType) } }
+                    onEnsureLocalFile = filesViewModel::ensureLocalFile,
+                    onOpenFile = { file, localFile -> openFile(context, localFile, file.mimeType).getOrThrow() }
                 )
             }
         }
@@ -221,7 +235,6 @@ private fun AuthenticatedNavHost(
             }
             val state by filesViewModel.state.collectAsState()
             val context = LocalContext.current
-            val scope = rememberCoroutineScope()
             Shell(navController, MainSection.Files, folderId, channels, createChannel, onLogout, syncRuntimeState) { openDrawer ->
                 FilesScreen(
                     state = state,
@@ -230,7 +243,8 @@ private fun AuthenticatedNavHost(
                     onModeChange = filesViewModel::onModeChange,
                     onFavoritesToggle = filesViewModel::onFavoritesToggle,
                     onKindChange = filesViewModel::onKindChange,
-                    onFileClick = { file -> scope.launch { openFile(context, filesViewModel.downloadToCache(file), file.mimeType) } }
+                    onEnsureLocalFile = filesViewModel::ensureLocalFile,
+                    onOpenFile = { file, localFile -> openFile(context, localFile, file.mimeType).getOrThrow() }
                 )
             }
         }
@@ -240,7 +254,6 @@ private fun AuthenticatedNavHost(
             }
             val state by filesViewModel.state.collectAsState()
             val context = LocalContext.current
-            val scope = rememberCoroutineScope()
             Shell(navController, MainSection.Favorites, null, channels, createChannel, onLogout, syncRuntimeState) { openDrawer ->
                 FilesScreen(
                     state = state,
@@ -249,7 +262,8 @@ private fun AuthenticatedNavHost(
                     onModeChange = filesViewModel::onModeChange,
                     onFavoritesToggle = filesViewModel::onFavoritesToggle,
                     onKindChange = filesViewModel::onKindChange,
-                    onFileClick = { file -> scope.launch { openFile(context, filesViewModel.downloadToCache(file), file.mimeType) } },
+                    onEnsureLocalFile = filesViewModel::ensureLocalFile,
+                    onOpenFile = { file, localFile -> openFile(context, localFile, file.mimeType).getOrThrow() },
                     favoritesOnlyInitial = true
                 )
             }

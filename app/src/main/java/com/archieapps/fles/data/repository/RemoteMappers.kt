@@ -89,7 +89,11 @@ fun Message.toFileItem(channel: Channel): List<FileItem> {
             mimeType = it.mimeType,
             compressed = it.compressed,
             extension = it.extension,
-            previewColor = it.previewColor
+            previewColor = it.previewColor,
+            localPath = it.localPath,
+            previewLocalPath = it.previewLocalPath,
+            syncStatus = it.syncStatus,
+            lastError = it.lastError
         )
     }
 }

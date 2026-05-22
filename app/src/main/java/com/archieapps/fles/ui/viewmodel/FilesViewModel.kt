@@ -82,6 +82,14 @@ class FilesViewModel(
     suspend fun downloadToCache(file: FileItem): File {
         return filesRepository.downloadToCache(file)
     }
+
+    suspend fun ensureLocalFile(file: FileItem): File {
+        file.localPath?.removePrefix("file://")?.let {
+            val localFile = File(it)
+            if (localFile.exists()) return localFile
+        }
+        return filesRepository.downloadToCache(file)
+    }
 }
 
 data class FilesUiState(

@@ -4,6 +4,7 @@ import androidx.room.Dao
 import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
+import androidx.room.Transaction
 import androidx.room.Update
 import kotlinx.coroutines.flow.Flow
 
@@ -57,11 +58,19 @@ interface MessageDao {
     @Query("SELECT * FROM messages WHERE folderLocalId = :folderLocalId AND deletedAt IS NULL ORDER BY createdAt ASC")
     fun observeByFolder(folderLocalId: String): Flow<List<MessageEntity>>
 
+    @Transaction
+    @Query("SELECT * FROM messages WHERE folderLocalId = :folderLocalId AND deletedAt IS NULL ORDER BY createdAt ASC")
+    fun observeByFolderWithChildren(folderLocalId: String): Flow<List<MessageEntityWithChildren>>
+
     @Query("SELECT * FROM messages WHERE folderLocalId = :folderLocalId AND deletedAt IS NULL ORDER BY createdAt ASC")
     suspend fun byFolder(folderLocalId: String): List<MessageEntity>
 
     @Query("SELECT * FROM messages WHERE deletedAt IS NULL ORDER BY createdAt DESC")
     fun observeActive(): Flow<List<MessageEntity>>
+
+    @Transaction
+    @Query("SELECT * FROM messages WHERE deletedAt IS NULL ORDER BY createdAt DESC")
+    fun observeActiveWithChildren(): Flow<List<MessageEntityWithChildren>>
 
     @Query("SELECT * FROM messages WHERE deletedAt IS NULL ORDER BY createdAt DESC")
     suspend fun active(): List<MessageEntity>

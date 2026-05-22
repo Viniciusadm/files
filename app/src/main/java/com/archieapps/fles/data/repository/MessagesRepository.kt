@@ -8,6 +8,7 @@ import com.archieapps.fles.data.local.db.LocalSyncStatus
 import com.archieapps.fles.data.local.db.LocalUploadStatus
 import com.archieapps.fles.data.local.db.MessageDao
 import com.archieapps.fles.data.local.db.MessageEntity
+import com.archieapps.fles.data.local.db.MessageEntityWithChildren
 import com.archieapps.fles.data.local.db.nowMs
 import com.archieapps.fles.data.local.db.parseRemoteDate
 import com.archieapps.fles.data.remote.AddListItemRequest
@@ -55,24 +56,14 @@ class MessagesRepository(
     private val networkMonitor: NetworkMonitor
 ) {
     fun observeMessages(folderId: String): Flow<List<Message>> {
-        return messageDao.observeByFolder(folderId).mapLatest { rows ->
-            rows.map { message ->
-                message.toUi(
-                    listItemDao.byMessage(message.localId).map { it.toUi() },
-                    attachmentDao.byMessage(message.localId).map { it.toUi() }
-                )
-            }
+        return messageDao.observeByFolderWithChildren(folderId).mapLatest { rows ->
+            rows.map { it.toUi() }
         }
     }
 
     fun observeAllMessages(): Flow<List<Message>> {
-        return messageDao.observeActive().mapLatest { rows ->
-            rows.map { message ->
-                message.toUi(
-                    listItemDao.byMessage(message.localId).map { it.toUi() },
-                    attachmentDao.byMessage(message.localId).map { it.toUi() }
-                )
-            }
+        return messageDao.observeActiveWithChildren().mapLatest { rows ->
+            rows.map { it.toUi() }
         }
     }
 
@@ -446,6 +437,13 @@ class MessagesRepository(
     private fun textBody(value: String): RequestBody = value.toRequestBody("text/plain".toMediaType())
 
     private fun normalizeDownloadUrl(url: String): String = url.removePrefix("/api/").removePrefix("api/")
+}
+
+private fun MessageEntityWithChildren.toUi(): Message {
+    return message.toUi(
+        listItems.filter { it.deletedAt == null }.sortedBy { it.position }.map { it.toUi() },
+        attachments.filter { it.deletedAt == null }.map { it.toUi() }
+    )
 }
 
 private fun Any?.asBoolean(): Boolean = when (this) {

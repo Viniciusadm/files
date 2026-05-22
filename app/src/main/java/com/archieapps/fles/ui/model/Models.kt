@@ -122,7 +122,11 @@ data class FileItem(
     val mimeType: String,
     val compressed: Boolean,
     val extension: String,
-    val previewColor: Color? = null
+    val previewColor: Color? = null,
+    val localPath: String? = null,
+    val previewLocalPath: String? = null,
+    val syncStatus: SyncStatus = SyncStatus.Synced,
+    val lastError: String? = null
 )
 
 data class PendingAttachment(
