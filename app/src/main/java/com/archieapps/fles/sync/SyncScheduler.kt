@@ -19,7 +19,7 @@ class SyncScheduler(context: Context) {
             .setConstraints(Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build())
             .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 30, TimeUnit.SECONDS)
             .build()
-        workManager.enqueueUniqueWork("fles-sync-now", ExistingWorkPolicy.REPLACE, request)
+        workManager.enqueueUniqueWork("fles-sync-now", ExistingWorkPolicy.APPEND_OR_REPLACE, request)
     }
 
     fun schedulePeriodic() {

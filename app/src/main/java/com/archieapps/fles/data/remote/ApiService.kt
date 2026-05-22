@@ -146,6 +146,7 @@ data class RemoteChannel(
     val name: String?,
     val lastMessage: String?,
     val updatedAt: String?,
+    val parentId: String? = null,
     val icon: String?,
     val color: String?,
     val isSecure: Boolean? = null

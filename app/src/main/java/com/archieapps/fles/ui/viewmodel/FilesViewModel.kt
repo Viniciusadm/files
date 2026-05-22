@@ -84,6 +84,7 @@ class FilesViewModel(
     }
 
     suspend fun ensureLocalFile(file: FileItem): File {
+        if (file.isSecure) return filesRepository.downloadToCache(file)
         file.localPath?.removePrefix("file://")?.let {
             val localFile = File(it)
             if (localFile.exists()) return localFile

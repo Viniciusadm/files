@@ -183,6 +183,9 @@ interface SyncQueueDao {
     @Query("SELECT * FROM sync_queue WHERE status = 'queued' AND nextAttemptAt <= :now ORDER BY id ASC")
     suspend fun ready(now: Long): List<SyncQueueEntity>
 
+    @Query("UPDATE sync_queue SET status = 'queued', nextAttemptAt = :now WHERE status = 'in_flight'")
+    suspend fun requeueInFlight(now: Long)
+
     @Query("SELECT * FROM sync_queue WHERE id = :id LIMIT 1")
     suspend fun byId(id: Long): SyncQueueEntity?
 

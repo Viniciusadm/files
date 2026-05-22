@@ -24,6 +24,7 @@ suspend fun RemoteChannel.toUi(cryptoRepository: CryptoRepository): Channel {
         icon = icon ?: "Folder",
         color = parseColor(color),
         isSecure = isSecure == true,
+        parentId = parentId,
         syncStatus = SyncStatus.Synced
     )
 }
@@ -94,7 +95,8 @@ fun Message.toFileItem(channel: Channel): List<FileItem> {
             localPath = it.localPath,
             previewLocalPath = it.previewLocalPath,
             syncStatus = it.syncStatus,
-            lastError = it.lastError
+            lastError = it.lastError,
+            isSecure = channel.isSecure
         )
     }
 }

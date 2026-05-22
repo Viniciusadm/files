@@ -59,21 +59,24 @@ class ChannelsRepository(
         return channelDao.byLocalId(localId)?.isSecure == true
     }
 
-    suspend fun createChannel(name: String, icon: String, color: String, isSecure: Boolean = false): Channel {
+    suspend fun createChannel(name: String, icon: String, color: String, isSecure: Boolean = false, parentLocalId: String? = null): Channel {
         val trimmed = name.trim()
         require(trimmed.isNotBlank()) { "Informe um nome" }
-        if (isSecure && !secureFoldersRepository.state.value.unlocked) throw IllegalStateException("Pastas seguras bloqueadas.")
+        val parent = parentLocalId?.let { channelDao.byLocalId(it) }
+        require(parentLocalId == null || parent != null) { "Pasta pai inválida." }
+        val inheritedSecure = parent?.isSecure ?: isSecure
+        if (inheritedSecure && !secureFoldersRepository.state.value.unlocked) throw IllegalStateException("Pastas seguras bloqueadas.")
         val now = nowMs()
         val localId = UUID.randomUUID().toString()
-        val storedName = if (isSecure) secureFoldersRepository.encryptString(trimmed) else trimmed
+        val storedName = if (inheritedSecure) secureFoldersRepository.encryptString(trimmed) else trimmed
         val entity = ChannelEntity(
             localId = localId,
             remoteId = null,
             name = storedName,
             icon = icon,
             color = color,
-            isSecure = isSecure,
-            parentLocalId = null,
+            isSecure = inheritedSecure,
+            parentLocalId = parentLocalId,
             lastMessagePreview = null,
             syncStatus = LocalSyncStatus.PendingCreate,
             lastError = null,
@@ -86,10 +89,11 @@ class ChannelsRepository(
             opType = "create",
             entity = "channel",
             entityLocalId = localId,
-            payload = "{\"name\":\"${trimmed.jsonEscape()}\",\"icon\":\"${icon.jsonEscape()}\",\"color\":\"${color.jsonEscape()}\",\"isSecure\":$isSecure}"
+            payload = "{\"name\":\"${trimmed.jsonEscape()}\",\"icon\":\"${icon.jsonEscape()}\",\"color\":\"${color.jsonEscape()}\",\"isSecure\":$inheritedSecure,\"parentLocalId\":${parentLocalId?.let { "\"${it.jsonEscape()}\"" } ?: "null"}}",
+            dependsOnId = parentLocalId?.let { queueRepository.lastPendingOpId(it) }
         )
         scheduler.scheduleNow()
-        return if (isSecure) entity.toSecureUi() else entity.toUi()
+        return if (inheritedSecure) entity.toSecureUi() else entity.toUi()
     }
 
     suspend fun deleteChannel(id: String) {
@@ -104,6 +108,7 @@ class ChannelsRepository(
         val remote = apiService.channels().requireBody()
         val remoteIds = remote.mapNotNull { it.id }.toSet()
         remote.forEach { upsertFromRemote(it) }
+        remote.forEach { updateParentFromRemote(it) }
         channelDao.active(true).forEach { local ->
             if (local.remoteId != null && local.remoteId !in remoteIds && local.syncStatus == LocalSyncStatus.Synced) {
                 val now = nowMs()
@@ -114,10 +119,13 @@ class ChannelsRepository(
 
     suspend fun pushCreate(localId: String) {
         val local = channelDao.byLocalId(localId) ?: return
+        val parentRemoteId = local.parentLocalId?.let { parentLocalId ->
+            channelDao.byLocalId(parentLocalId)?.remoteId ?: throw IllegalStateException("Pasta pai ainda sem remoteId")
+        }
         val remote = apiService.createFolder(
             CreateFolderRequest(
                 name = if (local.isSecure) local.name else cryptoRepository.encryptString(local.name),
-                parentId = null,
+                parentId = parentRemoteId,
                 icon = local.icon ?: "Folder",
                 color = local.color ?: "#3390ec",
                 isSecure = local.isSecure
@@ -158,6 +166,7 @@ class ChannelsRepository(
                         icon = remote.icon ?: existing.icon,
                         color = remote.color ?: existing.color,
                         isSecure = remote.isSecure == true,
+                        parentLocalId = remote.parentId?.let { channelDao.byRemoteId(it)?.localId },
                         lastMessagePreview = if (remote.isSecure == true) remote.lastMessage else cryptoRepository.tryDecryptString(remote.lastMessage),
                         updatedAt = remoteUpdatedAt,
                         lastError = null
@@ -176,7 +185,7 @@ class ChannelsRepository(
                 icon = remote.icon,
                 color = remote.color,
                 isSecure = remote.isSecure == true,
-                parentLocalId = null,
+                parentLocalId = remote.parentId?.let { channelDao.byRemoteId(it)?.localId },
                 lastMessagePreview = if (remote.isSecure == true) remote.lastMessage else cryptoRepository.tryDecryptString(remote.lastMessage),
                 syncStatus = LocalSyncStatus.Synced,
                 lastError = null,
@@ -186,6 +195,15 @@ class ChannelsRepository(
             )
         )
         return localId
+    }
+
+    private suspend fun updateParentFromRemote(remote: RemoteChannel) {
+        val remoteId = remote.id ?: return
+        val local = channelDao.byRemoteId(remoteId) ?: return
+        val parentLocalId = remote.parentId?.let { channelDao.byRemoteId(it)?.localId }
+        if (local.parentLocalId != parentLocalId) {
+            channelDao.update(local.copy(parentLocalId = parentLocalId))
+        }
     }
 
     private fun ChannelEntity.toSecureUi(): Channel {

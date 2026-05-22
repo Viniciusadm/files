@@ -205,10 +205,15 @@ fun FilesToolbar(
 }
 
 @Composable
-fun FileGridCard(file: FileItem, modifier: Modifier = Modifier, onClick: () -> Unit = {}) {
+fun FileGridCard(
+    file: FileItem,
+    modifier: Modifier = Modifier,
+    onEnsureLocalFile: (suspend (FileItem) -> File)? = null,
+    onClick: () -> Unit = {}
+) {
     val colors = FlesTheme.colors
     val style = kindStyle(file.kind)
-    val previewBitmap = rememberGridPreviewBitmap(file)
+    val previewBitmap = rememberGridPreviewBitmap(file, onEnsureLocalFile)
     Column(
         modifier = modifier
             .shadow(1.dp, RoundedCornerShape(FlesTheme.radius.x2l))
@@ -492,21 +497,28 @@ fun formatDate(iso: String): String {
 }
 
 private fun FileItem.existingLocalFile(): File? {
+    if (isSecure) return null
     val path = localPath?.removePrefix("file://") ?: return null
     return File(path).takeIf { it.exists() }
 }
 
 @Composable
-private fun rememberGridPreviewBitmap(file: FileItem): ImageBitmap? {
+private fun rememberGridPreviewBitmap(file: FileItem, onEnsureLocalFile: (suspend (FileItem) -> File)? = null): ImageBitmap? {
     val source = file.previewLocalPath ?: file.localPath
-    var bitmap by remember(file.id, source) { mutableStateOf<ImageBitmap?>(null) }
+    var bitmap by remember(file.id, source, file.isSecure) { mutableStateOf<ImageBitmap?>(null) }
     LaunchedEffect(file.id, source) {
         bitmap = null
         if (!file.isImagePreviewable()) return@LaunchedEffect
-        val path = source?.removePrefix("file://") ?: return@LaunchedEffect
-        bitmap = withContext(Dispatchers.IO) {
-            BitmapFactory.decodeFile(path)?.asImageBitmap()
-        }
+        bitmap = runCatching {
+            val localFile = if (file.isSecure) {
+                onEnsureLocalFile?.invoke(file)
+            } else {
+                source?.removePrefix("file://")?.let { File(it).takeIf { candidate -> candidate.exists() } }
+            } ?: return@LaunchedEffect
+            withContext(Dispatchers.IO) {
+                BitmapFactory.decodeFile(localFile.absolutePath)?.asImageBitmap()
+            }
+        }.getOrNull()
     }
     return bitmap
 }

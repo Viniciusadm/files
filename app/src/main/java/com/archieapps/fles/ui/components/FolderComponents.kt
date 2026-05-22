@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
@@ -33,6 +34,35 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.archieapps.fles.ui.model.Channel
 import com.archieapps.fles.ui.theme.FlesTheme
+
+data class ChannelTreeItem(
+    val channel: Channel,
+    val depth: Int
+)
+
+fun flattenChannelTree(channels: List<Channel>): List<ChannelTreeItem> {
+    val childrenByParent = channels.groupBy { it.parentId }
+    val seen = mutableSetOf<String>()
+    val result = mutableListOf<ChannelTreeItem>()
+
+    fun append(parentId: String?, depth: Int) {
+        childrenByParent[parentId].orEmpty().forEach { channel ->
+            if (!seen.add(channel.id)) return@forEach
+            result += ChannelTreeItem(channel, depth)
+            append(channel.id, depth + 1)
+        }
+    }
+
+    append(null, 0)
+    channels.forEach { channel ->
+        if (seen.add(channel.id)) {
+            result += ChannelTreeItem(channel, 0)
+            append(channel.id, 1)
+        }
+    }
+
+    return result
+}
 
 fun folderIcon(name: String): ImageVector {
     return when (name) {
@@ -78,7 +108,8 @@ fun FolderListItem(
     channel: Channel,
     active: Boolean,
     onClick: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    depth: Int = 0
 ) {
     val colors = FlesTheme.colors
     Row(
@@ -87,7 +118,8 @@ fun FolderListItem(
             .background(if (active) colors.sidebarAccent else Color.Transparent)
             .clickable(onClick = onClick)
             .fillMaxWidth()
-            .height(56.dp),
+            .height(56.dp)
+            .padding(start = (depth * 18).dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Spacer(Modifier.width(8.dp))

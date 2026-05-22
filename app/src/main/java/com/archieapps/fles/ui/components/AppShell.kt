@@ -242,15 +242,16 @@ fun Sidebar(
             modifier = Modifier.weight(1f).padding(horizontal = 8.dp, vertical = 8.dp),
             verticalArrangement = Arrangement.spacedBy(2.dp)
         ) {
-            items(channels, key = { it.id }) { channel ->
+            items(flattenChannelTree(channels), key = { it.channel.id }) { item ->
                 FolderListItem(
-                    channel = channel,
-                    active = activeFolderId == channel.id,
+                    channel = item.channel,
+                    active = activeFolderId == item.channel.id,
+                    depth = item.depth,
                     onClick = {
                         if (section == MainSection.Files || section == MainSection.Favorites) {
-                            onNavigateFolderFiles(channel.id)
+                            onNavigateFolderFiles(item.channel.id)
                         } else {
-                            onNavigateThread(channel.id)
+                            onNavigateThread(item.channel.id)
                         }
                     }
                 )
@@ -265,15 +266,16 @@ fun Sidebar(
                         modifier = Modifier.padding(horizontal = 8.dp, vertical = 10.dp)
                     )
                 }
-                items(secureChannels, key = { "secure-${it.id}" }) { channel ->
+                items(flattenChannelTree(secureChannels), key = { "secure-${it.channel.id}" }) { item ->
                     FolderListItem(
-                        channel = channel,
-                        active = activeFolderId == channel.id,
+                        channel = item.channel,
+                        active = activeFolderId == item.channel.id,
+                        depth = item.depth,
                         onClick = {
                             if (section == MainSection.Files || section == MainSection.Favorites) {
-                                onNavigateFolderFiles(channel.id)
+                                onNavigateFolderFiles(item.channel.id)
                             } else {
-                                onNavigateThread(channel.id)
+                                onNavigateThread(item.channel.id)
                             }
                         }
                     )
@@ -318,21 +320,25 @@ fun Sidebar(
 }
 
 @Composable
-private fun CreateChannelDialog(
+fun CreateChannelDialog(
     secureEnabled: Boolean,
     onClose: () -> Unit,
-    onCreate: (String, String, String, Boolean) -> Unit
+    onCreate: (String, String, String, Boolean) -> Unit,
+    title: String = "Nova pasta",
+    confirmLabel: String = "Criar pasta",
+    secureOptionVisible: Boolean = secureEnabled,
+    initialSecure: Boolean = false
 ) {
     val colors = FlesTheme.colors
     var name by remember { mutableStateOf("") }
     var icon by remember { mutableStateOf("Folder") }
     var color by remember { mutableStateOf("#3390ec") }
-    var isSecure by remember { mutableStateOf(false) }
+    var isSecure by remember { mutableStateOf(initialSecure) }
     val icons = listOf("Folder", "Inbox", "Briefcase", "GraduationCap", "Image", "Star")
     val colorsList = listOf("#3390ec", "#22c55e", "#eab308", "#ef4444", "#8b5cf6", "#06b6d4")
     AlertDialog(
         onDismissRequest = onClose,
-        title = { Text("Nova pasta") },
+        title = { Text(title) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 AppInput(name, { name = it }, "Ex.: Receitas")
@@ -358,7 +364,7 @@ private fun CreateChannelDialog(
                         )
                     }
                 }
-                if (secureEnabled) {
+                if (secureOptionVisible) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Checkbox(checked = isSecure, onCheckedChange = { isSecure = it })
                         Text("Segura", color = colors.foreground, fontSize = 14.sp, fontWeight = FontWeight.Medium)
@@ -366,7 +372,7 @@ private fun CreateChannelDialog(
                 }
             }
         },
-        confirmButton = { AppButton("Criar pasta", enabled = name.trim().isNotBlank(), onClick = { onCreate(name, icon, color, isSecure) }) },
+        confirmButton = { AppButton(confirmLabel, enabled = name.trim().isNotBlank(), onClick = { onCreate(name, icon, color, isSecure) }) },
         dismissButton = { AppButton("Cancelar", variant = AppButtonVariant.Ghost, onClick = onClose) }
     )
 }

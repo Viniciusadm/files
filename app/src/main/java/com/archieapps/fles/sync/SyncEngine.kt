@@ -45,6 +45,7 @@ class SyncEngine(
                 return
             }
             statusStore.setGlobal(GlobalSyncState.Syncing)
+            queueDao.requeueInFlight(nowMs())
             drainQueue()
             channelsRepository.refreshFromRemote()
             syncStateDao.upsert(SyncStateEntity("channels", nowMs(), null))

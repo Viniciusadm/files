@@ -122,7 +122,7 @@ private fun FilesScaffold(
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 items(state.files, key = { it.id }) {
-                    FileGridCard(file = it, onClick = { selectedFile = it })
+                    FileGridCard(file = it, onEnsureLocalFile = onEnsureLocalFile, onClick = { selectedFile = it })
                 }
             }
         } else {

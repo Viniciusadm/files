@@ -65,7 +65,16 @@ class MessagesRepository(
 
     fun observeAllMessages(): Flow<List<Message>> {
         return messageDao.observeActiveWithChildren().mapLatest { rows ->
-            rows.map { it.toUi() }
+            rows.mapNotNull { row ->
+                val secure = channelsRepository.isSecure(row.message.folderLocalId)
+                if (secure && !secureFoldersRepository.state.value.unlocked) {
+                    null
+                } else if (secure) {
+                    row.toSecureUi()
+                } else {
+                    row.toUi()
+                }
+            }
         }
     }
 
@@ -249,7 +258,10 @@ class MessagesRepository(
             val file = File(it.removePrefix("file://"))
             if (file.exists()) {
                 return if (secure) {
-                    val bytes = decryptFileBytes(entity.messageLocalId, file.readBytes())
+                    val storedBytes = file.readBytes()
+                    val bytes = runCatching { decryptFileBytes(entity.messageLocalId, storedBytes) }.getOrElse {
+                        if (storedBytes.looksLikePlainFile(attachment)) storedBytes else throw it
+                    }
                     attachmentIo.writeCacheFile(attachment.fileName, bytes)
                 } else {
                     file
@@ -259,10 +271,16 @@ class MessagesRepository(
         if (!networkMonitor.isOnline()) throw IllegalStateException("Arquivo indisponível offline. Baixe quando houver conexão.")
         attachmentDao.update(entity.copy(syncStatus = LocalSyncStatus.Downloading, lastError = null))
         return runCatching {
-            val bytes = decryptFileBytes(entity.messageLocalId, apiService.download(normalizeDownloadUrl(entity.remoteUrl.orEmpty())).bytes())
-            val file = attachmentIo.persistDownloadedFile(entity.localId, entity.fileName, bytes)
-            attachmentDao.update(entity.copy(localPath = file.absolutePath, syncStatus = LocalSyncStatus.Synced, lastError = null, updatedAt = nowMs()))
-            file
+            val encryptedBytes = apiService.download(normalizeDownloadUrl(entity.remoteUrl.orEmpty())).bytes()
+            val decryptedBytes = decryptFileBytes(entity.messageLocalId, encryptedBytes)
+            val localFile = if (secure) {
+                attachmentIo.persistAttachmentBytes(entity.localId, entity.extension.orEmpty(), encryptedBytes)
+            } else {
+                attachmentIo.persistDownloadedFile(entity.localId, entity.fileName, decryptedBytes)
+            }
+            val previewFile = if (secure) attachmentIo.writeCacheFile(attachment.fileName, decryptedBytes) else localFile
+            attachmentDao.update(entity.copy(localPath = localFile.absolutePath, syncStatus = LocalSyncStatus.Synced, lastError = null, updatedAt = nowMs()))
+            previewFile
         }.getOrElse {
             attachmentDao.update(entity.copy(syncStatus = LocalSyncStatus.Failed, lastError = it.message))
             throw it
@@ -368,7 +386,12 @@ class MessagesRepository(
 
     suspend fun markFailed(entity: String, localId: String, error: String) {
         when (entity) {
-            "message" -> messageDao.byLocalId(localId)?.let { messageDao.update(it.copy(syncStatus = LocalSyncStatus.Failed, lastError = error)) }
+            "message" -> messageDao.byLocalId(localId)?.let {
+                messageDao.update(it.copy(syncStatus = LocalSyncStatus.Failed, lastError = error))
+                attachmentDao.allByMessage(localId).forEach { attachment ->
+                    attachmentDao.update(attachment.copy(syncStatus = LocalSyncStatus.Failed, uploadStatus = LocalUploadStatus.Failed, lastError = error))
+                }
+            }
             "listItem" -> listItemDao.byLocalId(localId)?.let { listItemDao.update(it.copy(syncStatus = LocalSyncStatus.Failed, lastError = error)) }
             "attachment" -> attachmentDao.byLocalId(localId)?.let { attachmentDao.update(it.copy(syncStatus = LocalSyncStatus.Failed, uploadStatus = LocalUploadStatus.Failed, lastError = error)) }
         }
@@ -533,6 +556,26 @@ class MessagesRepository(
     private fun textBody(value: String): RequestBody = value.toRequestBody("text/plain".toMediaType())
 
     private fun normalizeDownloadUrl(url: String): String = url.removePrefix("/api/").removePrefix("api/")
+}
+
+private fun ByteArray.looksLikePlainFile(attachment: Attachment): Boolean {
+    val ext = attachment.extension.lowercase()
+    return when {
+        startsWithBytes(0x89, 0x50, 0x4E, 0x47) -> true
+        startsWithBytes(0xFF, 0xD8, 0xFF) -> true
+        startsWithAscii("GIF87a") || startsWithAscii("GIF89a") -> true
+        size >= 12 && startsWithAscii("RIFF") && copyOfRange(8, 12).decodeToString() == "WEBP" -> true
+        attachment.kind == FileKind.Text || attachment.mimeType.startsWith("text/") || ext in setOf("txt", "md", "json", "xml", "csv", "log") -> true
+        else -> false
+    }
+}
+
+private fun ByteArray.startsWithBytes(vararg bytes: Int): Boolean {
+    return size >= bytes.size && bytes.indices.all { this[it].toInt() and 0xFF == bytes[it] }
+}
+
+private fun ByteArray.startsWithAscii(value: String): Boolean {
+    return size >= value.length && copyOfRange(0, value.length).decodeToString() == value
 }
 
 private fun MessageEntityWithChildren.toUi(): Message {

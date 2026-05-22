@@ -157,7 +157,19 @@ private fun AuthenticatedNavHost(
     LaunchedEffect(Unit) {
         appContainer.channelsRepository.observeSecureChannels().collect { secureChannels = it }
     }
+    val homeChannelsState = when (val state = channelsState) {
+        UiState.Loading -> UiState.Loading
+        UiState.Empty -> if (secureChannels.isEmpty()) UiState.Empty else UiState.Success(secureChannels)
+        is UiState.Error -> state
+        is UiState.Success -> {
+            val homeChannels = state.data + secureChannels
+            if (homeChannels.isEmpty()) UiState.Empty else UiState.Success(homeChannels)
+        }
+    }
     val createChannel: (String, String, String, Boolean) -> Unit = { name, icon, color, isSecure -> messagesViewModel.createChannel(name, icon, color, isSecure) }
+    val createSubfolder: (String, String, String, Boolean, String) -> Unit = { name, icon, color, isSecure, parentLocalId ->
+        messagesViewModel.createChannel(name, icon, color, isSecure, parentLocalId)
+    }
 
     NavHost(
         navController = navController,
@@ -170,7 +182,7 @@ private fun AuthenticatedNavHost(
         composable(AppRoutes.Messages) {
             Shell(navController, MainSection.Messages, null, channels, secureChannels, secureState.unlocked, createChannel, onLogout, syncRuntimeState) { openDrawer ->
                 MessagesScreen(
-                    state = channelsState,
+                    state = homeChannelsState,
                     openDrawer = openDrawer,
                     onThreadClick = { navController.navigate(AppRoutes.thread(it)) }
                 )
@@ -198,6 +210,7 @@ private fun AuthenticatedNavHost(
                     openDrawer = openDrawer,
                     onBack = { navController.navigate(AppRoutes.Messages) },
                     onDeleteThread = { threadViewModel.deleteThread { navController.navigate(AppRoutes.Messages) } },
+                    onCreateSubfolder = { name, icon, color, isSecure -> createSubfolder(name, icon, color, isSecure, folderId) },
                     onSend = { text, attachments -> threadViewModel.send(text, attachments) {} },
                     onCreateList = { title, items -> threadViewModel.createChecklist(title, items) {} },
                     onConfigureKey = { navController.navigate(AppRoutes.Key) },
@@ -315,9 +328,9 @@ private fun AuthenticatedNavHost(
                     state = state,
                     openDrawer = openDrawer,
                     onPinChange = secureViewModel::onPinChange,
-                    onSetup = { secureViewModel.setup { navController.navigate(AppRoutes.Files) } },
-                    onUnlock = { secureViewModel.unlock { navController.navigate(AppRoutes.Files) } },
-                    onReset = { secureViewModel.reset { navController.navigate(AppRoutes.Files) } },
+                    onSetup = { secureViewModel.setup { navController.navigateHomeFromSecureFolders() } },
+                    onUnlock = { secureViewModel.unlock { navController.navigateHomeFromSecureFolders() } },
+                    onReset = { secureViewModel.reset { navController.navigateHomeFromSecureFolders() } },
                     onLock = secureViewModel::lock
                 )
             }
@@ -337,6 +350,14 @@ private fun AuthenticatedNavHost(
                 onThreadClick = { navController.navigate(AppRoutes.thread(it)) },
                 onCreateChannel = { name, icon, color -> createChannel(name, icon, color, false) }
             )
+        }
+    }
+}
+
+private fun NavHostController.navigateHomeFromSecureFolders() {
+    navigate(AppRoutes.Messages) {
+        popUpTo(AppRoutes.SecureFolders) {
+            inclusive = true
         }
     }
 }

@@ -27,6 +27,7 @@ fun ChannelEntity.toUi(): Channel {
         icon = icon ?: "Folder",
         color = parseColorValue(color),
         isSecure = isSecure,
+        parentId = parentLocalId,
         syncStatus = syncStatus.toUiSyncStatus(),
         lastError = lastError
     )

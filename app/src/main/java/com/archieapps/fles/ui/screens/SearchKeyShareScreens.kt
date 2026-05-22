@@ -62,6 +62,7 @@ import com.archieapps.fles.ui.components.FolderAvatar
 import com.archieapps.fles.ui.components.FolderListItem
 import com.archieapps.fles.ui.components.IconButtonBox
 import com.archieapps.fles.ui.components.folderIcon
+import com.archieapps.fles.ui.components.flattenChannelTree
 import com.archieapps.fles.ui.theme.FlesTheme
 import com.archieapps.fles.ui.theme.withAlpha
 import com.archieapps.fles.ui.viewmodel.KeyUiState
@@ -223,9 +224,9 @@ fun ShareScreen(
             LinkPreviewCard(state.previewSite, state.previewTitle, state.previewDescription)
             AppInput(state.query, onQueryChange, "Buscar pasta", leadingIcon = Icons.Filled.Search, modifier = Modifier.fillMaxWidth().padding(12.dp))
             LazyColumn(modifier = Modifier.fillMaxSize().padding(horizontal = 8.dp)) {
-                items(state.channels, key = { it.id }) { channel ->
-                    FolderListItem(channel, active = false, onClick = {
-                        onSend(channel.id)
+                items(flattenChannelTree(state.channels), key = { it.channel.id }) { item ->
+                    FolderListItem(item.channel, active = false, depth = item.depth, onClick = {
+                        onSend(item.channel.id)
                     })
                 }
             }

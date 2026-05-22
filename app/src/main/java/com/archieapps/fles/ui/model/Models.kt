@@ -58,6 +58,7 @@ data class Channel(
     val icon: String,
     val color: Color,
     val isSecure: Boolean = false,
+    val parentId: String? = null,
     val syncStatus: SyncStatus = SyncStatus.Synced,
     val lastError: String? = null
 )
@@ -127,7 +128,8 @@ data class FileItem(
     val localPath: String? = null,
     val previewLocalPath: String? = null,
     val syncStatus: SyncStatus = SyncStatus.Synced,
-    val lastError: String? = null
+    val lastError: String? = null,
+    val isSecure: Boolean = false
 )
 
 data class PendingAttachment(

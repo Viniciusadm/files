@@ -51,6 +51,7 @@ import androidx.compose.material.icons.filled.AttachFile
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.CreateNewFolder
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.Download
@@ -141,6 +142,7 @@ fun ChatHeader(
     itemCount: Int,
     onMenuClick: () -> Unit,
     onBack: (() -> Unit)? = null,
+    onCreateSubfolderClick: () -> Unit = {},
     onDeleteClick: () -> Unit = {}
 ) {
     val colors = FlesTheme.colors
@@ -164,6 +166,14 @@ fun ChatHeader(
         Box {
             IconButtonBox(Icons.Filled.MoreVert, onClick = { menuOpen = true })
             DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+                DropdownMenuItem(
+                    text = { Text("Nova subpasta", color = colors.foreground) },
+                    leadingIcon = { Icon(Icons.Filled.CreateNewFolder, null, tint = colors.foreground) },
+                    onClick = {
+                        menuOpen = false
+                        onCreateSubfolderClick()
+                    }
+                )
                 DropdownMenuItem(
                     text = { Text("Excluir conversa", color = colors.destructive) },
                     leadingIcon = { Icon(Icons.Filled.Delete, null, tint = colors.destructive) },
@@ -308,6 +318,9 @@ fun MessageBubble(
                         if (message.attachments.isEmpty() && message.type != MessageType.Text && message.content.isBlank()) {
                             Text("[anexo indisponível]", color = colors.bubbleOwnForeground.withAlpha(0.6f), fontSize = 13.sp, modifier = Modifier.padding(horizontal = 4.dp))
                         }
+                    }
+                    message.lastError?.takeIf { it.isNotBlank() }?.let { error ->
+                        Text(error, color = Color(0xFFFFCDD2), fontSize = 12.sp, lineHeight = 16.sp, modifier = Modifier.padding(horizontal = 4.dp))
                     }
                     Row(modifier = Modifier.align(Alignment.End).padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                         if (message.isFavorite) {
