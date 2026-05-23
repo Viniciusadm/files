@@ -27,6 +27,8 @@ class AttachmentIo(private val context: Context) {
         get() = File(context.filesDir, "attachments").also { it.mkdirs() }
     private val downloadsDir: File
         get() = File(context.filesDir, "downloads").also { it.mkdirs() }
+    private val uploadWorkDir: File
+        get() = File(context.cacheDir, "uploads").also { it.mkdirs() }
 
     fun pendingFromUri(uri: Uri, mimeHint: String? = null): PendingAttachment {
         val info = queryInfo(uri)
@@ -72,7 +74,11 @@ class AttachmentIo(private val context: Context) {
         validateFileSize(attachment.fileName, attachment.size)
         val extension = attachment.extension.ifBlank { "bin" }.replace(Regex("[^a-zA-Z0-9]"), "").take(8).ifBlank { "bin" }
         val file = File(attachmentsDir, "$localId.$extension")
-        file.writeBytes(readBytes(attachment.uri))
+        resolver.openInputStream(attachment.uri)?.use { input ->
+            file.outputStream().use { output ->
+                input.copyTo(output)
+            }
+        } ?: throw IllegalStateException("Não foi possível ler o arquivo")
         return file
     }
 
@@ -95,6 +101,14 @@ class AttachmentIo(private val context: Context) {
         val file = File(context.cacheDir, "${UUID.randomUUID()}-$safe")
         file.writeBytes(bytes)
         return file
+    }
+
+    fun uploadWorkFile(localId: String): File {
+        return File(uploadWorkDir, "$localId-upload.bin")
+    }
+
+    fun temporaryWorkFile(localId: String): File {
+        return File(uploadWorkDir, "$localId-source.bin")
     }
 
     fun clearTemporaryCache() {

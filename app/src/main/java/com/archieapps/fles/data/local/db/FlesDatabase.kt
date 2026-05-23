@@ -18,7 +18,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         SyncQueueEntity::class,
         SyncStateEntity::class
     ],
-    version = 2,
+    version = 3,
     exportSchema = false
 )
 abstract class FlesDatabase : RoomDatabase() {
@@ -41,7 +41,7 @@ abstract class FlesDatabase : RoomDatabase() {
                     FlesDatabase::class.java,
                     "fles.db"
                 )
-                    .addMigrations(MIGRATION_1_2)
+                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
                     .enableMultiInstanceInvalidation()
                     .build()
                     .also { instance = it }
@@ -52,6 +52,18 @@ abstract class FlesDatabase : RoomDatabase() {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL("ALTER TABLE channels ADD COLUMN isSecure INTEGER NOT NULL DEFAULT 0")
                 db.execSQL("CREATE INDEX IF NOT EXISTS index_channels_isSecure ON channels(isSecure)")
+            }
+        }
+
+        private val MIGRATION_2_3 = object : Migration(2, 3) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE attachments ADD COLUMN uploadId TEXT")
+                db.execSQL("ALTER TABLE attachments ADD COLUMN chunkSize INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("ALTER TABLE attachments ADD COLUMN totalChunks INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("ALTER TABLE attachments ADD COLUMN nextChunkIndex INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("ALTER TABLE attachments ADD COLUMN uploadedBytes INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("ALTER TABLE attachments ADD COLUMN uploadState TEXT")
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_attachments_uploadId ON attachments(uploadId)")
             }
         }
     }

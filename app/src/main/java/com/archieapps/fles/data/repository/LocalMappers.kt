@@ -65,6 +65,11 @@ fun ListItemEntity.toUi(): ListItem {
 
 fun AttachmentEntity.toUi(): Attachment {
     val kind = fileKind.toFileKind(mimeType, fileName, extension)
+    val progressTotal = size.takeIf { it > 0L } ?: 1L
+    val progressBytes = when (uploadStatus) {
+        LocalUploadStatus.Uploaded -> size
+        else -> uploadedBytes
+    }.coerceIn(0L, progressTotal)
     return Attachment(
         id = localId,
         remoteId = remoteId,
@@ -82,6 +87,9 @@ fun AttachmentEntity.toUi(): Attachment {
         localPath = localPath,
         previewLocalPath = previewLocalPath,
         uploadStatus = uploadStatus.toUiUploadStatus(),
+        uploadedBytes = progressBytes,
+        totalBytes = size,
+        uploadProgress = (progressBytes.toFloat() / progressTotal.toFloat()).coerceIn(0f, 1f),
         syncStatus = syncStatus.toUiSyncStatus(),
         lastError = lastError
     )
@@ -104,7 +112,10 @@ fun String.toUiUploadStatus(): UploadStatus {
     return when (this) {
         LocalUploadStatus.PendingUpload -> UploadStatus.PendingUpload
         LocalUploadStatus.Uploading -> UploadStatus.Uploading
+        LocalUploadStatus.Paused -> UploadStatus.Paused
+        LocalUploadStatus.Retrying -> UploadStatus.Retrying
         LocalUploadStatus.Uploaded -> UploadStatus.Uploaded
+        LocalUploadStatus.Cancelled -> UploadStatus.Cancelled
         else -> UploadStatus.Failed
     }
 }

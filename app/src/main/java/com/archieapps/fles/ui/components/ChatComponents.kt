@@ -70,6 +70,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -115,6 +116,7 @@ import com.archieapps.fles.ui.model.Message
 import com.archieapps.fles.ui.model.MessageType
 import com.archieapps.fles.ui.model.PendingAttachment
 import com.archieapps.fles.ui.model.SyncStatus
+import com.archieapps.fles.ui.model.UploadStatus
 import com.archieapps.fles.ui.theme.FlesTheme
 import com.archieapps.fles.ui.theme.withAlpha
 import kotlinx.coroutines.Dispatchers
@@ -202,6 +204,8 @@ fun MessageList(
     onUpdateListItem: (String, String, String) -> Unit,
     onDeleteListItem: (String, String) -> Unit,
     onReorderListItems: (String, List<String>) -> Unit,
+    onRetryUpload: (String) -> Unit,
+    onCancelUpload: (String) -> Unit,
     onDownload: suspend (Attachment) -> File
 ) {
     val colors = FlesTheme.colors
@@ -254,6 +258,8 @@ fun MessageList(
                     onUpdateListItem = onUpdateListItem,
                     onDeleteListItem = onDeleteListItem,
                     onReorderListItems = onReorderListItems,
+                    onRetryUpload = onRetryUpload,
+                    onCancelUpload = onCancelUpload,
                     onDownload = onDownload
                 )
             }
@@ -274,6 +280,8 @@ fun MessageBubble(
     onUpdateListItem: (String, String, String) -> Unit,
     onDeleteListItem: (String, String) -> Unit,
     onReorderListItems: (String, List<String>) -> Unit,
+    onRetryUpload: (String) -> Unit,
+    onCancelUpload: (String) -> Unit,
     onDownload: suspend (Attachment) -> File
 ) {
     val colors = FlesTheme.colors
@@ -311,7 +319,14 @@ fun MessageBubble(
                             onReorder = { onReorderListItems(message.id, it) }
                         )
                     } else {
-                        if (message.attachments.isNotEmpty()) AttachmentGrid(message.attachments, onDownload)
+                        if (message.attachments.isNotEmpty()) {
+                            AttachmentGrid(
+                                attachments = message.attachments,
+                                onRetryUpload = { onRetryUpload(message.id) },
+                                onCancelUpload = { onCancelUpload(message.id) },
+                                onDownload = onDownload
+                            )
+                        }
                         if (message.content.isNotBlank()) {
                             Text(message.content, color = colors.bubbleOwnForeground, fontSize = 14.sp, lineHeight = 22.sp, modifier = Modifier.padding(horizontal = 4.dp))
                         }
@@ -481,7 +496,12 @@ private fun MenuSeparator() {
 }
 
 @Composable
-fun AttachmentGrid(attachments: List<Attachment>, onDownload: suspend (Attachment) -> File) {
+fun AttachmentGrid(
+    attachments: List<Attachment>,
+    onRetryUpload: () -> Unit,
+    onCancelUpload: () -> Unit,
+    onDownload: suspend (Attachment) -> File
+) {
     if (attachments.isEmpty()) return
     val images = attachments.filter { it.kind == FileKind.Image }
     val docs = attachments.filter { it.kind != FileKind.Image }
@@ -489,14 +509,14 @@ fun AttachmentGrid(attachments: List<Attachment>, onDownload: suspend (Attachmen
         if (images.isNotEmpty()) {
             FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 images.forEach { attachment ->
-                    ImageThumb(attachment = attachment, height = 200.dp, onDownload = onDownload)
+                    ImageThumb(attachment = attachment, height = 200.dp, onRetryUpload = onRetryUpload, onCancelUpload = onCancelUpload, onDownload = onDownload)
                 }
             }
         }
         if (docs.isNotEmpty()) {
             Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 docs.forEach { attachment ->
-                    DocumentAttachmentCard(attachment, onDownload)
+                    DocumentAttachmentCard(attachment, onRetryUpload, onCancelUpload, onDownload)
                 }
             }
         }
@@ -504,7 +524,7 @@ fun AttachmentGrid(attachments: List<Attachment>, onDownload: suspend (Attachmen
 }
 
 @Composable
-private fun ImageThumb(attachment: Attachment, height: Dp, onDownload: suspend (Attachment) -> File) {
+private fun ImageThumb(attachment: Attachment, height: Dp, onRetryUpload: () -> Unit, onCancelUpload: () -> Unit, onDownload: suspend (Attachment) -> File) {
     val colors = FlesTheme.colors
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -514,6 +534,7 @@ private fun ImageThumb(attachment: Attachment, height: Dp, onDownload: suspend (
     var loadFailed by remember(attachment.id) { mutableStateOf(false) }
     val preview = rememberAttachmentBitmap(attachment)
     val compressed = attachment.compressed
+    val ready = attachment.uploadStatus == UploadStatus.Uploaded
     Box(
         modifier = Modifier
             .fillMaxWidth()
@@ -521,7 +542,7 @@ private fun ImageThumb(attachment: Attachment, height: Dp, onDownload: suspend (
             .clip(RoundedCornerShape(FlesTheme.radius.lg))
             .background(colors.muted)
             .border(BorderStroke(0.5.dp, colors.border), RoundedCornerShape(FlesTheme.radius.lg))
-            .clickable {
+            .clickable(enabled = ready) {
                 open = true
                 loading = true
                 loadFailed = false
@@ -544,6 +565,14 @@ private fun ImageThumb(attachment: Attachment, height: Dp, onDownload: suspend (
             background = if (compressed) colors.primary.withAlpha(0.85f) else Color.Black.withAlpha(0.55f),
             modifier = Modifier.align(Alignment.BottomStart).padding(6.dp)
         )
+        if (attachment.uploadStatus != UploadStatus.Uploaded) {
+            UploadProgressPanel(
+                attachment = attachment,
+                onRetry = onRetryUpload,
+                onCancel = onCancelUpload,
+                modifier = Modifier.align(Alignment.BottomCenter).padding(6.dp)
+            )
+        }
     }
     if (open) {
         ImageViewer(
@@ -565,7 +594,7 @@ private fun ImageThumb(attachment: Attachment, height: Dp, onDownload: suspend (
 }
 
 @Composable
-private fun DocumentAttachmentCard(attachment: Attachment, onDownload: suspend (Attachment) -> File) {
+private fun DocumentAttachmentCard(attachment: Attachment, onRetryUpload: () -> Unit, onCancelUpload: () -> Unit, onDownload: suspend (Attachment) -> File) {
     val colors = FlesTheme.colors
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -594,6 +623,9 @@ private fun DocumentAttachmentCard(attachment: Attachment, onDownload: suspend (
         Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
             Text(attachment.fileName, color = colors.bubbleOwnForeground, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
             Text(formatBytes(attachment.size) + if (attachment.compressed) " · Comprimida" else "", color = colors.bubbleOwnForeground.withAlpha(0.65f), fontSize = 11.sp)
+            if (attachment.uploadStatus != UploadStatus.Uploaded) {
+                UploadProgressPanel(attachment, onRetryUpload, onCancelUpload)
+            }
             if (error != null) {
                 Text(error.orEmpty(), color = colors.destructive, fontSize = 11.sp, maxLines = 2)
             }
@@ -603,7 +635,7 @@ private fun DocumentAttachmentCard(attachment: Attachment, onDownload: suspend (
                 .size(32.dp)
                 .clip(RoundedCornerShape(FlesTheme.radius.full))
                 .background(colors.primary.withAlpha(0.15f))
-                .clickable(enabled = !busy) {
+                .clickable(enabled = !busy && attachment.uploadStatus == UploadStatus.Uploaded) {
                     busy = true
                     error = null
                     scope.launch {
@@ -617,6 +649,47 @@ private fun DocumentAttachmentCard(attachment: Attachment, onDownload: suspend (
         ) {
             if (busy) CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp, color = colors.primary)
             else Icon(Icons.Filled.Download, null, modifier = Modifier.size(16.dp), tint = colors.primary)
+        }
+    }
+}
+
+@Composable
+private fun UploadProgressPanel(
+    attachment: Attachment,
+    onRetry: () -> Unit,
+    onCancel: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val colors = FlesTheme.colors
+    val label = when (attachment.uploadStatus) {
+        UploadStatus.PendingUpload -> "pausado"
+        UploadStatus.Uploading -> "enviando"
+        UploadStatus.Retrying -> "retomando"
+        UploadStatus.Uploaded -> "concluído"
+        UploadStatus.Failed -> "erro"
+        UploadStatus.Cancelled -> "cancelado"
+        UploadStatus.Paused -> "pausado"
+    }
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(FlesTheme.radius.md))
+            .background(colors.background.withAlpha(0.86f))
+            .padding(8.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp)
+    ) {
+        LinearProgressIndicator(
+            progress = attachment.uploadProgress,
+            modifier = Modifier.fillMaxWidth().height(4.dp).clip(RoundedCornerShape(FlesTheme.radius.full)),
+            color = if (attachment.uploadStatus == UploadStatus.Failed) colors.destructive else colors.primary,
+            trackColor = colors.border
+        )
+        Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text("${(attachment.uploadProgress * 100).toInt()}% · ${formatBytes(attachment.uploadedBytes)} / ${formatBytes(attachment.totalBytes)} · $label", modifier = Modifier.weight(1f), color = colors.foreground, fontSize = 11.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            if (attachment.uploadStatus == UploadStatus.Failed) {
+                Text("Tentar", modifier = Modifier.clickable { onRetry() }.padding(4.dp), color = colors.primary, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+            }
+            Text("Cancelar", modifier = Modifier.clickable { onCancel() }.padding(4.dp), color = colors.destructive, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
         }
     }
 }

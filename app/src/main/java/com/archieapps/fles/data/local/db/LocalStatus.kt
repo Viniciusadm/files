@@ -14,8 +14,11 @@ object LocalSyncStatus {
 object LocalUploadStatus {
     const val PendingUpload = "pending_upload"
     const val Uploading = "uploading"
+    const val Paused = "paused"
+    const val Retrying = "retrying"
     const val Uploaded = "uploaded"
     const val Failed = "failed"
+    const val Cancelled = "cancelled"
 }
 
 object QueueStatus {

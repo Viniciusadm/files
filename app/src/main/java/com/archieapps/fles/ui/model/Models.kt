@@ -24,8 +24,11 @@ enum class SyncStatus {
 enum class UploadStatus {
     PendingUpload,
     Uploading,
+    Paused,
+    Retrying,
     Uploaded,
-    Failed
+    Failed,
+    Cancelled
 }
 
 enum class FileKind {
@@ -91,6 +94,9 @@ data class Attachment(
     val localPath: String? = null,
     val previewLocalPath: String? = null,
     val uploadStatus: UploadStatus = UploadStatus.Uploaded,
+    val uploadedBytes: Long = 0,
+    val totalBytes: Long = size,
+    val uploadProgress: Float = if (size > 0L) 1f else 0f,
     val syncStatus: SyncStatus = SyncStatus.Synced,
     val lastError: String? = null
 )

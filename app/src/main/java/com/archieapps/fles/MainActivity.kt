@@ -222,6 +222,8 @@ private fun AuthenticatedNavHost(
                     onUpdateListItem = threadViewModel::updateListItem,
                     onDeleteListItem = threadViewModel::deleteListItem,
                     onReorderListItems = threadViewModel::reorderListItems,
+                    onRetryUpload = threadViewModel::retryUpload,
+                    onCancelUpload = threadViewModel::cancelUpload,
                     onDownload = threadViewModel::downloadToCache
                 )
             }

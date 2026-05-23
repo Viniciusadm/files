@@ -95,7 +95,8 @@ data class ListItemEntity(
     indices = [
         Index("remoteId", unique = true),
         Index("messageLocalId"),
-        Index("uploadStatus")
+        Index("uploadStatus"),
+        Index("uploadId")
     ]
 )
 data class AttachmentEntity(
@@ -113,6 +114,12 @@ data class AttachmentEntity(
     val previewLocalPath: String?,
     val previewUrl: String?,
     val uploadStatus: String,
+    val uploadId: String? = null,
+    val chunkSize: Int = 0,
+    val totalChunks: Int = 0,
+    val nextChunkIndex: Int = 0,
+    val uploadedBytes: Long = 0,
+    val uploadState: String? = null,
     val syncStatus: String,
     val lastError: String?,
     val createdAt: Long,

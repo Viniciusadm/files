@@ -5,8 +5,10 @@ import com.archieapps.fles.data.local.KeyStorage
 import java.security.MessageDigest
 import java.security.SecureRandom
 import javax.crypto.Cipher
+import javax.crypto.CipherOutputStream
 import javax.crypto.spec.GCMParameterSpec
 import javax.crypto.spec.SecretKeySpec
+import java.io.File
 
 class CryptoRepository(private val keyStorage: KeyStorage) {
     private val random = SecureRandom()
@@ -69,6 +71,28 @@ class CryptoRepository(private val keyStorage: KeyStorage) {
         cipher.init(Cipher.ENCRYPT_MODE, SecretKeySpec(key, "AES"), GCMParameterSpec(128, iv))
         val ciphertext = cipher.doFinal(bytes)
         return EncryptedFile(iv + ciphertext, fileNameEnvelope)
+    }
+
+    suspend fun encryptFileForUpload(input: File, fileName: String, output: File): EncryptedDiskFile {
+        val key = decodeKey(keyStorage.getKey() ?: throw IllegalStateException("Chave E2EE não configurada."))
+        return encryptFileForUploadWithKey(input, key, encryptString(fileName), output)
+    }
+
+    fun encryptFileForUploadWithKey(input: File, key: ByteArray, fileNameEnvelope: String, output: File): EncryptedDiskFile {
+        val iv = ByteArray(12)
+        random.nextBytes(iv)
+        val cipher = Cipher.getInstance("AES/GCM/NoPadding")
+        cipher.init(Cipher.ENCRYPT_MODE, SecretKeySpec(key, "AES"), GCMParameterSpec(128, iv))
+        output.parentFile?.mkdirs()
+        input.inputStream().use { source ->
+            output.outputStream().use { raw ->
+                raw.write(iv)
+                CipherOutputStream(raw, cipher).use { encrypted ->
+                    source.copyTo(encrypted)
+                }
+            }
+        }
+        return EncryptedDiskFile(output, fileNameEnvelope)
     }
 
     suspend fun decryptBytesFromFile(combined: ByteArray): ByteArray {
@@ -141,5 +165,10 @@ class CryptoRepository(private val keyStorage: KeyStorage) {
 
 data class EncryptedFile(
     val bytes: ByteArray,
+    val fileNameEnvelope: String
+)
+
+data class EncryptedDiskFile(
+    val file: File,
     val fileNameEnvelope: String
 )

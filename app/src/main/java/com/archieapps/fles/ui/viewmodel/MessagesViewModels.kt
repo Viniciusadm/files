@@ -119,6 +119,8 @@ class ThreadViewModel(
     fun updateListItem(messageId: String, itemId: String, text: String) = mutate { messagesRepository.updateListItem(messageId, itemId, text = text) }
     fun deleteListItem(messageId: String, itemId: String) = mutate { messagesRepository.deleteListItem(messageId, itemId) }
     fun reorderListItems(messageId: String, orderedIds: List<String>) = mutate { messagesRepository.reorderListItems(messageId, orderedIds) }
+    fun retryUpload(messageId: String) = mutate { messagesRepository.retryUpload(messageId) }
+    fun cancelUpload(messageId: String) = mutate { messagesRepository.cancelUpload(messageId) }
 
     suspend fun downloadToCache(attachment: Attachment): File {
         return messagesRepository.downloadAttachment(attachment)

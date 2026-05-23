@@ -58,6 +58,26 @@ interface ApiService {
         @Part files: List<MultipartBody.Part>
     ): ApiEnvelope<RemoteMessage>
 
+    @POST("uploads")
+    suspend fun createUpload(@Body request: CreateUploadRequest): ApiEnvelope<UploadSessionResponse>
+
+    @GET("uploads/{uploadId}")
+    suspend fun uploadStatus(@Path("uploadId") uploadId: String): ApiEnvelope<UploadSessionResponse>
+
+    @Multipart
+    @POST("uploads/{uploadId}/chunks")
+    suspend fun uploadChunk(
+        @Path("uploadId") uploadId: String,
+        @PartMap fields: Map<String, @JvmSuppressWildcards RequestBody>,
+        @Part chunk: MultipartBody.Part
+    ): ApiEnvelope<UploadSessionResponse>
+
+    @POST("uploads/{uploadId}/complete")
+    suspend fun completeUpload(@Path("uploadId") uploadId: String): ApiEnvelope<UploadSessionResponse>
+
+    @DELETE("uploads/{uploadId}")
+    suspend fun cancelUpload(@Path("uploadId") uploadId: String): ApiEnvelope<Unit>
+
     @PATCH("messages/{id}/move")
     suspend fun moveMessage(
         @Path("id") id: String,
@@ -187,6 +207,27 @@ data class RemoteMessage(
     val isFavorite: Any?,
     val createdAt: String?,
     val updatedAt: String?
+)
+
+data class CreateUploadRequest(
+    val fileName: String,
+    val mimeType: String,
+    val size: Long,
+    val chunkSize: Int,
+    val extension: String,
+    val fileKind: String,
+    val compressed: Boolean
+)
+
+data class UploadSessionResponse(
+    val uploadId: String,
+    val chunkSize: Int,
+    val totalChunks: Int,
+    val receivedChunks: Int,
+    val receivedBytes: Long,
+    val nextChunkIndex: Int,
+    val size: Long,
+    val status: String
 )
 
 data class CreateFolderRequest(

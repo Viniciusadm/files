@@ -105,6 +105,8 @@ fun ThreadScreen(
     onUpdateListItem: (String, String, String) -> Unit,
     onDeleteListItem: (String, String) -> Unit,
     onReorderListItems: (String, List<String>) -> Unit,
+    onRetryUpload: (String) -> Unit,
+    onCancelUpload: (String) -> Unit,
     onDownload: suspend (Attachment) -> File
 ) {
     var createSubfolderOpen by remember { mutableStateOf(false) }
@@ -140,6 +142,8 @@ fun ThreadScreen(
                             onUpdateListItem = onUpdateListItem,
                             onDeleteListItem = onDeleteListItem,
                             onReorderListItems = onReorderListItems,
+                            onRetryUpload = onRetryUpload,
+                            onCancelUpload = onCancelUpload,
                             onDownload = onDownload
                         )
                     }

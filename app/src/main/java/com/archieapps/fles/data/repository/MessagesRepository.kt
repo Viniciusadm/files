@@ -16,6 +16,7 @@ import com.archieapps.fles.data.remote.ApiService
 import com.archieapps.fles.data.remote.ChecklistItemRequest
 import com.archieapps.fles.data.remote.CreateChecklistRequest
 import com.archieapps.fles.data.remote.CreateMessageRequest
+import com.archieapps.fles.data.remote.CreateUploadRequest
 import com.archieapps.fles.data.remote.MoveMessageRequest
 import com.archieapps.fles.data.remote.RemoteAttachment
 import com.archieapps.fles.data.remote.RemoteListItem
@@ -39,8 +40,11 @@ import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.MultipartBody
 import okhttp3.RequestBody
 import okhttp3.RequestBody.Companion.toRequestBody
+import okio.BufferedSink
 import java.io.File
+import java.io.FileInputStream
 import java.util.UUID
+import kotlin.math.min
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class MessagesRepository(
@@ -56,6 +60,10 @@ class MessagesRepository(
     private val scheduler: SyncScheduler,
     private val networkMonitor: NetworkMonitor
 ) {
+    private companion object {
+        const val UPLOAD_CHUNK_SIZE = 2 * 1024 * 1024
+    }
+
     fun observeMessages(folderId: String): Flow<List<Message>> {
         return messageDao.observeByFolderWithChildren(folderId).mapLatest { rows ->
             val secure = channelsRepository.isSecure(folderId)
@@ -295,6 +303,22 @@ class MessagesRepository(
 
     fun cachePlainFile(fileName: String, bytes: ByteArray): File = attachmentIo.writeCacheFile(fileName, bytes)
 
+    suspend fun retryUpload(messageLocalId: String) {
+        attachmentDao.allByMessage(messageLocalId).forEach {
+            attachmentDao.update(it.copy(uploadStatus = LocalUploadStatus.Retrying, syncStatus = LocalSyncStatus.Uploading, lastError = null, uploadState = "retomando", updatedAt = nowMs()))
+        }
+        queueRepository.retryEntity(messageLocalId)
+        scheduler.scheduleNow()
+    }
+
+    suspend fun cancelUpload(messageLocalId: String) {
+        attachmentDao.allByMessage(messageLocalId).forEach { attachment ->
+            attachment.uploadId?.let { uploadId -> runCatching { apiService.cancelUpload(uploadId).requireSuccess() } }
+            attachmentDao.update(attachment.copy(uploadStatus = LocalUploadStatus.Cancelled, syncStatus = LocalSyncStatus.Failed, lastError = "Upload cancelado", uploadState = "cancelado", updatedAt = nowMs()))
+        }
+        hardDeleteMessage(messageLocalId)
+    }
+
     suspend fun refreshMessagesFromRemote(folderLocalId: String) {
         val folderRemoteId = channelsRepository.getRemoteId(folderLocalId) ?: return
         apiService.messages(folderRemoteId).requireBody().forEach { upsertFromRemote(it, folderLocalId) }
@@ -321,24 +345,122 @@ class MessagesRepository(
                 val fields = linkedMapOf<String, RequestBody>()
                 fields["folderId"] = textBody(folderRemoteId)
                 if (row.content.isNotBlank()) fields["content"] = textBody(remoteString(row.content, secure))
-                val files = atts.mapIndexed { index, attachment ->
-                    val encrypted = if (secure) {
-                        EncryptedFile(attachmentIo.readBytes(attachment.localPath.orEmpty()), attachment.fileName)
-                    } else {
-                        encryptAttachmentBytes(attachmentIo.readBytes(attachment.localPath.orEmpty()), attachment.fileName, false)
-                    }
-                    fields["fileMetadata[$index][fileName]"] = textBody(if (secure) attachment.fileName else encrypted.fileNameEnvelope)
+                val uploadIds = atts.mapIndexed { index, attachment ->
+                    val upload = prepareUploadFile(attachment, secure)
+                    fields["fileMetadata[$index][fileName]"] = textBody(upload.fileNameEnvelope)
                     fields["fileMetadata[$index][mimeType]"] = textBody(attachment.mimeType)
                     fields["fileMetadata[$index][fileKind]"] = textBody(attachment.fileKind ?: "other")
                     fields["fileMetadata[$index][extension]"] = textBody(attachment.extension.orEmpty())
                     fields["fileMetadata[$index][compressed]"] = textBody(if (attachment.compressed == true) "true" else "false")
-                    fields["fileMetadata[$index][size]"] = textBody(encrypted.bytes.size.toString())
-                    MultipartBody.Part.createFormData("files[$index]", "att-$index.bin", encrypted.bytes.toRequestBody("application/octet-stream".toMediaType()))
+                    fields["fileMetadata[$index][size]"] = textBody(upload.file.length().toString())
+                    val uploadId = uploadAttachmentChunks(attachment, upload)
+                    if (!secure) runCatching { upload.file.delete() }
+                    fields["uploadIds[$index]"] = textBody(uploadId)
+                    uploadId
                 }
-                apiService.uploadMessage(fields, files).requireBody()
+                require(uploadIds.size == atts.size) { "Falha ao preparar uploads." }
+                apiService.uploadMessage(fields, emptyList()).requireBody()
             }
         }
         applyMessageRemote(localId, remote, row.folderLocalId)
+    }
+
+    private suspend fun prepareUploadFile(attachment: AttachmentEntity, secure: Boolean): PreparedUpload {
+        val localFile = File(attachment.localPath.orEmpty())
+        if (!localFile.exists()) throw IllegalStateException("Arquivo local não encontrado.")
+        if (secure) {
+            return PreparedUpload(localFile, attachment.fileName)
+        }
+
+        val encrypted = cryptoRepository.encryptFileForUpload(localFile, attachment.fileName, attachmentIo.uploadWorkFile(attachment.localId))
+        return PreparedUpload(encrypted.file, encrypted.fileNameEnvelope)
+    }
+
+    private suspend fun uploadAttachmentChunks(attachment: AttachmentEntity, upload: PreparedUpload): String {
+        val existingUploadId = attachment.uploadId
+        val session = if (existingUploadId.isNullOrBlank()) {
+            apiService.createUpload(
+                CreateUploadRequest(
+                    fileName = upload.fileNameEnvelope,
+                    mimeType = attachment.mimeType,
+                    size = upload.file.length(),
+                    chunkSize = UPLOAD_CHUNK_SIZE,
+                    extension = attachment.extension.orEmpty(),
+                    fileKind = attachment.fileKind ?: "other",
+                    compressed = attachment.compressed == true
+                )
+            ).requireBody()
+        } else {
+            attachmentDao.update(attachment.copy(uploadStatus = LocalUploadStatus.Retrying, uploadState = "retomando", lastError = null))
+            apiService.uploadStatus(existingUploadId).requireBody()
+        }
+
+        var uploadId = session.uploadId
+        var chunkSize = session.chunkSize
+        var nextChunkIndex = session.nextChunkIndex
+        var uploadedBytes = session.receivedBytes
+        var totalChunks = session.totalChunks
+        attachmentDao.update(
+            attachment.copy(
+                uploadId = uploadId,
+                chunkSize = chunkSize,
+                totalChunks = totalChunks,
+                nextChunkIndex = nextChunkIndex,
+                uploadedBytes = uploadedBytes,
+                uploadStatus = LocalUploadStatus.Uploading,
+                uploadState = "enviando",
+                lastError = null,
+                updatedAt = nowMs()
+            )
+        )
+
+        while (nextChunkIndex < totalChunks) {
+            val offset = nextChunkIndex.toLong() * chunkSize.toLong()
+            val length = min(chunkSize.toLong(), upload.file.length() - offset)
+            val fields = linkedMapOf<String, RequestBody>()
+            fields["chunkIndex"] = textBody(nextChunkIndex.toString())
+            fields["totalChunks"] = textBody(totalChunks.toString())
+            fields["chunkSize"] = textBody(chunkSize.toString())
+            val part = MultipartBody.Part.createFormData(
+                "chunk",
+                "chunk-$nextChunkIndex.bin",
+                FileChunkRequestBody(upload.file, offset, length)
+            )
+            val response = apiService.uploadChunk(uploadId, fields, part).requireBody()
+            chunkSize = response.chunkSize
+            totalChunks = response.totalChunks
+            nextChunkIndex = response.nextChunkIndex
+            uploadedBytes = response.receivedBytes
+            attachmentDao.byLocalId(attachment.localId)?.let {
+                attachmentDao.update(
+                    it.copy(
+                        chunkSize = chunkSize,
+                        totalChunks = totalChunks,
+                        nextChunkIndex = nextChunkIndex,
+                        uploadedBytes = uploadedBytes,
+                        uploadStatus = LocalUploadStatus.Uploading,
+                        uploadState = "enviando",
+                        updatedAt = nowMs()
+                    )
+                )
+            }
+        }
+
+        val completed = apiService.completeUpload(uploadId).requireBody()
+        attachmentDao.byLocalId(attachment.localId)?.let {
+            attachmentDao.update(
+                it.copy(
+                    chunkSize = completed.chunkSize,
+                    totalChunks = completed.totalChunks,
+                    nextChunkIndex = completed.nextChunkIndex,
+                    uploadedBytes = completed.size,
+                    uploadStatus = LocalUploadStatus.Uploading,
+                    uploadState = "concluído",
+                    updatedAt = nowMs()
+                )
+            )
+        }
+        return uploadId
     }
 
     suspend fun pushMessageDelete(localId: String) {
@@ -403,13 +525,16 @@ class MessagesRepository(
         val localId = UUID.randomUUID().toString()
         val file = if (secure) {
             val key = secureFoldersRepository.secureKey() ?: throw IllegalStateException("Pastas seguras bloqueadas.")
-            val encrypted = cryptoRepository.encryptBytesForFileWithKey(
-                attachmentIo.readBytes(attachment.uri),
-                attachment.fileName,
+            val source = attachmentIo.persistAttachment(localId, attachment)
+            val encrypted = cryptoRepository.encryptFileForUploadWithKey(
+                source,
                 key,
-                secureFoldersRepository.encryptString(attachment.fileName)
+                secureFoldersRepository.encryptString(attachment.fileName),
+                attachmentIo.temporaryWorkFile(localId)
             )
-            attachmentIo.persistAttachmentBytes(localId, attachment.extension, encrypted.bytes)
+            encrypted.file.copyTo(source, overwrite = true)
+            runCatching { encrypted.file.delete() }
+            source
         } else {
             attachmentIo.persistAttachment(localId, attachment)
         }
@@ -471,9 +596,32 @@ class MessagesRepository(
         val existing = attachmentDao.byRemoteId(remoteId)
         val now = nowMs()
         if (existing == null) {
-            attachmentDao.upsert(AttachmentEntity(UUID.randomUUID().toString(), remoteId, messageLocalId, localString(remote.fileName, secure), remote.mimeType ?: "application/octet-stream", remote.size.asLong(), remote.fileKind, remote.extension, remote.compressed.asBoolean(), null, remote.url, null, remote.previewUrl, LocalUploadStatus.Uploaded, LocalSyncStatus.Synced, null, parseRemoteDate(remote.createdAt), now, null))
+            attachmentDao.upsert(
+                AttachmentEntity(
+                    localId = UUID.randomUUID().toString(),
+                    remoteId = remoteId,
+                    messageLocalId = messageLocalId,
+                    fileName = localString(remote.fileName, secure),
+                    mimeType = remote.mimeType ?: "application/octet-stream",
+                    size = remote.size.asLong(),
+                    fileKind = remote.fileKind,
+                    extension = remote.extension,
+                    compressed = remote.compressed.asBoolean(),
+                    localPath = null,
+                    remoteUrl = remote.url,
+                    previewLocalPath = null,
+                    previewUrl = remote.previewUrl,
+                    uploadStatus = LocalUploadStatus.Uploaded,
+                    uploadedBytes = remote.size.asLong(),
+                    syncStatus = LocalSyncStatus.Synced,
+                    lastError = null,
+                    createdAt = parseRemoteDate(remote.createdAt),
+                    updatedAt = now,
+                    deletedAt = null
+                )
+            )
         } else if (existing.syncStatus == LocalSyncStatus.Synced) {
-            attachmentDao.update(existing.copy(fileName = localString(remote.fileName, secure), mimeType = remote.mimeType ?: existing.mimeType, size = remote.size.asLong(), fileKind = remote.fileKind ?: existing.fileKind, extension = remote.extension ?: existing.extension, compressed = remote.compressed.asBoolean(), remoteUrl = remote.url, previewUrl = remote.previewUrl ?: existing.previewUrl, uploadStatus = LocalUploadStatus.Uploaded, updatedAt = now, lastError = null))
+            attachmentDao.update(existing.copy(fileName = localString(remote.fileName, secure), mimeType = remote.mimeType ?: existing.mimeType, size = remote.size.asLong(), fileKind = remote.fileKind ?: existing.fileKind, extension = remote.extension ?: existing.extension, compressed = remote.compressed.asBoolean(), remoteUrl = remote.url, previewUrl = remote.previewUrl ?: existing.previewUrl, uploadStatus = LocalUploadStatus.Uploaded, uploadedBytes = remote.size.asLong(), updatedAt = now, lastError = null))
         }
     }
 
@@ -609,3 +757,37 @@ data class SearchResult(
     val channel: Channel,
     val message: Message
 )
+
+private data class PreparedUpload(
+    val file: File,
+    val fileNameEnvelope: String
+)
+
+private class FileChunkRequestBody(
+    private val file: File,
+    private val offset: Long,
+    private val byteCount: Long
+) : RequestBody() {
+    override fun contentType() = "application/octet-stream".toMediaType()
+
+    override fun contentLength(): Long = byteCount
+
+    override fun writeTo(sink: BufferedSink) {
+        FileInputStream(file).use { input ->
+            var skipped = 0L
+            while (skipped < offset) {
+                val current = input.skip(offset - skipped)
+                if (current <= 0L) throw IllegalStateException("Não foi possível posicionar o chunk.")
+                skipped += current
+            }
+            val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+            var remaining = byteCount
+            while (remaining > 0) {
+                val read = input.read(buffer, 0, min(buffer.size.toLong(), remaining).toInt())
+                if (read < 0) break
+                sink.write(buffer, 0, read)
+                remaining -= read.toLong()
+            }
+        }
+    }
+}
