@@ -532,7 +532,7 @@ private fun ImageThumb(attachment: Attachment, height: Dp, onRetryUpload: () -> 
     var viewerFile by remember(attachment.id) { mutableStateOf<File?>(null) }
     var loading by remember { mutableStateOf(false) }
     var loadFailed by remember(attachment.id) { mutableStateOf(false) }
-    val preview = rememberAttachmentBitmap(attachment)
+    val preview = rememberAttachmentBitmap(attachment, onEnsure = onDownload)
     val compressed = attachment.compressed
     val ready = attachment.uploadStatus == UploadStatus.Uploaded
     Box(
@@ -834,11 +834,23 @@ private fun AttachmentBadge(label: String, background: Color, modifier: Modifier
 }
 
 @Composable
-private fun rememberAttachmentBitmap(attachment: Attachment): ImageBitmap? {
+private fun rememberAttachmentBitmap(
+    attachment: Attachment,
+    onEnsure: (suspend (Attachment) -> File)? = null
+): ImageBitmap? {
     val source = attachment.previewLocalPath ?: attachment.previewUrl ?: attachment.localPath ?: attachment.url
-    var bitmap by remember(source) { mutableStateOf<ImageBitmap?>(null) }
-    LaunchedEffect(source) {
-        bitmap = loadBitmap(source)
+    var bitmap by remember(attachment.id, source) { mutableStateOf<ImageBitmap?>(null) }
+    LaunchedEffect(attachment.id, source) {
+        val initial = loadBitmap(source)
+        if (initial != null) {
+            bitmap = initial
+            return@LaunchedEffect
+        }
+        if (onEnsure == null || attachment.uploadStatus != UploadStatus.Uploaded) return@LaunchedEffect
+        val materialized = runCatching { onEnsure(attachment) }.getOrNull() ?: return@LaunchedEffect
+        bitmap = withContext(Dispatchers.IO) {
+            runCatching { BitmapFactory.decodeFile(materialized.absolutePath)?.asImageBitmap() }.getOrNull()
+        }
     }
     return bitmap
 }

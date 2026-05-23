@@ -263,6 +263,9 @@ class MessagesRepository(
     suspend fun downloadAttachment(attachment: Attachment): File {
         val entity = attachmentDao.byLocalId(attachment.id) ?: throw IllegalStateException("Anexo não encontrado")
         val secure = messageDao.byLocalId(entity.messageLocalId)?.let { channelsRepository.isSecure(it.folderLocalId) } == true
+        if (secure) {
+            entity.previewLocalPath?.let { File(it) }?.takeIf { it.exists() }?.let { return it }
+        }
         attachment.localPath?.let {
             val file = File(it.removePrefix("file://"))
             if (file.exists()) {
@@ -271,7 +274,11 @@ class MessagesRepository(
                     val bytes = runCatching { decryptFileBytes(entity.messageLocalId, storedBytes) }.getOrElse {
                         if (storedBytes.looksLikePlainFile(attachment)) storedBytes else throw it
                     }
-                    attachmentIo.writeCacheFile(attachment.fileName, bytes)
+                    val previewFile = attachmentIo.writeCacheFile(attachment.fileName, bytes)
+                    if (entity.previewLocalPath != previewFile.absolutePath) {
+                        attachmentDao.update(entity.copy(previewLocalPath = previewFile.absolutePath, updatedAt = nowMs()))
+                    }
+                    previewFile
                 } else {
                     file
                 }
@@ -288,7 +295,13 @@ class MessagesRepository(
                 attachmentIo.persistDownloadedFile(entity.localId, entity.fileName, decryptedBytes)
             }
             val previewFile = if (secure) attachmentIo.writeCacheFile(attachment.fileName, decryptedBytes) else localFile
-            attachmentDao.update(entity.copy(localPath = localFile.absolutePath, syncStatus = LocalSyncStatus.Synced, lastError = null, updatedAt = nowMs()))
+            attachmentDao.update(entity.copy(
+                localPath = localFile.absolutePath,
+                previewLocalPath = if (secure) previewFile.absolutePath else entity.previewLocalPath,
+                syncStatus = LocalSyncStatus.Synced,
+                lastError = null,
+                updatedAt = nowMs()
+            ))
             previewFile
         }.getOrElse {
             attachmentDao.update(entity.copy(syncStatus = LocalSyncStatus.Failed, lastError = it.message))
