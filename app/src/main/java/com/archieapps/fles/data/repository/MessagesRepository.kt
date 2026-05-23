@@ -111,6 +111,7 @@ class MessagesRepository(
     suspend fun send(folderId: String, content: String, attachments: List<PendingAttachment>): Message {
         val trimmed = content.trim()
         require(trimmed.isNotBlank() || attachments.isNotEmpty()) { "Mensagem vazia" }
+        attachments.forEach { AttachmentIo.validateFileSize(it.fileName, it.size) }
         requireFolderAccessible(folderId)
         val secure = channelsRepository.isSecure(folderId)
         val now = nowMs()

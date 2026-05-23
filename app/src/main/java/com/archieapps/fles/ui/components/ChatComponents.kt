@@ -993,12 +993,23 @@ fun Composer(
     var text by remember { mutableStateOf("") }
     var pickerOpen by remember { mutableStateOf(false) }
     var listOpen by remember { mutableStateOf(false) }
+    var attachmentError by remember { mutableStateOf<String?>(null) }
     val pending = remember { mutableStateListOf<PendingAttachment>() }
     val docs = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
-        pending.addAll(uris.map { attachmentIo.pendingFromUri(it) })
+        runCatching { uris.map { attachmentIo.pendingFromUri(it) } }
+            .onSuccess {
+                pending.addAll(it)
+                attachmentError = null
+            }
+            .onFailure { attachmentError = it.message ?: "Não foi possível anexar o arquivo." }
     }
     val images = rememberLauncherForActivityResult(ActivityResultContracts.GetMultipleContents()) { uris ->
-        pending.addAll(uris.map { attachmentIo.pendingFromUri(it, "image/*") })
+        runCatching { uris.map { attachmentIo.pendingFromUri(it, "image/*") } }
+            .onSuccess {
+                pending.addAll(it)
+                attachmentError = null
+            }
+            .onFailure { attachmentError = it.message ?: "Não foi possível anexar o arquivo." }
     }
     if (!keyConfigured) {
         Column(modifier = modifier.fillMaxWidth().background(colors.background).topHairline(colors.border).padding(12.dp)) {
@@ -1035,6 +1046,9 @@ fun Composer(
                     else Icon(Icons.AutoMirrored.Filled.Send, null, modifier = Modifier.size(18.dp), tint = colors.primaryForeground)
                 }
             }
+        }
+        attachmentError?.let {
+            Text(it, modifier = Modifier.padding(horizontal = 8.dp), color = colors.destructive, fontSize = 12.sp, lineHeight = 16.sp)
         }
         Text("Toque no clipe para anexar", modifier = Modifier.padding(horizontal = 8.dp), color = colors.mutedForeground, fontSize = 11.sp, textAlign = TextAlign.Start)
     }

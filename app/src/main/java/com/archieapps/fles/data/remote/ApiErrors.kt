@@ -26,6 +26,7 @@ private fun friendlyHttpMessage(code: Int, body: String?): String {
         401 -> "Sessão expirada. Entre novamente."
         403 -> "Você não tem permissão para esta ação."
         404 -> serverMessage ?: "Conteúdo não encontrado."
+        413 -> serverMessage ?: "Cada arquivo pode ter no máximo 1 GB."
         422 -> serverMessage ?: "Revise os dados informados."
         in 500..599 -> "Erro no servidor. Tente novamente."
         else -> serverMessage ?: "Erro na requisição."

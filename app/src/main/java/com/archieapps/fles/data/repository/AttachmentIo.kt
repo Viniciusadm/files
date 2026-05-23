@@ -6,10 +6,22 @@ import android.net.Uri
 import android.provider.OpenableColumns
 import com.archieapps.fles.ui.model.FileKind
 import com.archieapps.fles.ui.model.PendingAttachment
+import java.io.ByteArrayOutputStream
 import java.io.File
 import java.util.UUID
 
 class AttachmentIo(private val context: Context) {
+    companion object {
+        const val MAX_FILE_BYTES: Long = 1024L * 1024L * 1024L
+        const val MAX_FILE_LABEL: String = "1 GB"
+
+        fun validateFileSize(fileName: String, size: Long) {
+            if (size > MAX_FILE_BYTES) {
+                throw IllegalArgumentException("Arquivo \"$fileName\" ultrapassa o limite de $MAX_FILE_LABEL.")
+            }
+        }
+    }
+
     private val resolver: ContentResolver = context.contentResolver
     private val attachmentsDir: File
         get() = File(context.filesDir, "attachments").also { it.mkdirs() }
@@ -19,6 +31,7 @@ class AttachmentIo(private val context: Context) {
     fun pendingFromUri(uri: Uri, mimeHint: String? = null): PendingAttachment {
         val info = queryInfo(uri)
         val fileName = info.name ?: uri.lastPathSegment?.substringAfterLast('/') ?: "arquivo"
+        info.size?.let { validateFileSize(fileName, it) }
         val mimeType = mimeHint ?: resolver.getType(uri) ?: "application/octet-stream"
         val extension = fileName.substringAfterLast('.', "").lowercase()
         val kind = classify(mimeType, fileName)
@@ -35,7 +48,19 @@ class AttachmentIo(private val context: Context) {
     }
 
     fun readBytes(uri: Uri): ByteArray {
-        return resolver.openInputStream(uri)?.use { it.readBytes() }
+        return resolver.openInputStream(uri)?.use { input ->
+            val output = ByteArrayOutputStream()
+            val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+            var total = 0L
+            while (true) {
+                val read = input.read(buffer)
+                if (read < 0) break
+                total += read
+                validateFileSize("arquivo", total)
+                output.write(buffer, 0, read)
+            }
+            output.toByteArray()
+        }
             ?: throw IllegalStateException("Não foi possível ler o arquivo")
     }
 
@@ -44,6 +69,7 @@ class AttachmentIo(private val context: Context) {
     }
 
     fun persistAttachment(localId: String, attachment: PendingAttachment): File {
+        validateFileSize(attachment.fileName, attachment.size)
         val extension = attachment.extension.ifBlank { "bin" }.replace(Regex("[^a-zA-Z0-9]"), "").take(8).ifBlank { "bin" }
         val file = File(attachmentsDir, "$localId.$extension")
         file.writeBytes(readBytes(attachment.uri))
