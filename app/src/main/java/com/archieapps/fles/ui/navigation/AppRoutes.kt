@@ -11,7 +11,6 @@ object AppRoutes {
     const val Search = "search?query={query}"
     const val Key = "key"
     const val SecureFolders = "secure-folders"
-    const val Share = "share"
 
     fun thread(folderId: String): String = "thread/$folderId"
     fun folderFiles(folderId: String): String = "files/$folderId"

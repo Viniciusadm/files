@@ -67,7 +67,6 @@ import com.archieapps.fles.ui.theme.FlesTheme
 import com.archieapps.fles.ui.theme.withAlpha
 import com.archieapps.fles.ui.viewmodel.KeyUiState
 import com.archieapps.fles.ui.viewmodel.SearchUiState
-import com.archieapps.fles.ui.viewmodel.ShareUiState
 
 @Composable
 fun SearchScreen(
@@ -186,114 +185,6 @@ fun KeyScreen(
                     }
                     Text("A chave nunca sai deste dispositivo. Para usar o mesmo conteúdo em outro aparelho, copie a chave e cole na mesma tela do outro lado.", color = colors.mutedForeground, fontSize = 12.sp, lineHeight = 16.sp)
                 }
-            }
-        }
-    }
-}
-
-@Composable
-fun ShareScreen(
-    state: ShareUiState,
-    onQueryChange: (String) -> Unit,
-    onSend: (String) -> Unit,
-    onClose: () -> Unit,
-    onThreadClick: (String) -> Unit,
-    onCreateChannel: (String, String, String) -> Unit
-) {
-    val colors = FlesTheme.colors
-    var createOpen by remember { mutableStateOf(false) }
-    Box(modifier = Modifier.fillMaxSize().background(colors.background).safeDrawingPadding()) {
-        Column(modifier = Modifier.fillMaxSize()) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .border(BorderStroke(0.5.dp, colors.border))
-                    .padding(12.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                IconButtonBox(Icons.Filled.Close, onClick = onClose, size = 40.dp, tint = colors.foreground)
-                Column(modifier = Modifier.weight(1f)) {
-                    Text("Enviar para…", color = colors.foreground, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
-                    Text(state.summary, color = colors.mutedForeground, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                }
-                IconButtonBox(Icons.Filled.Add, onClick = { createOpen = true }, size = 40.dp, tint = colors.primary)
-            }
-            if (state.error != null) {
-                Text(state.error, modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp), color = colors.destructive, fontSize = 12.sp)
-            }
-            LinkPreviewCard(state.previewSite, state.previewTitle, state.previewDescription)
-            AppInput(state.query, onQueryChange, "Buscar pasta", leadingIcon = Icons.Filled.Search, modifier = Modifier.fillMaxWidth().padding(12.dp))
-            LazyColumn(modifier = Modifier.fillMaxSize().padding(horizontal = 8.dp)) {
-                items(flattenChannelTree(state.channels), key = { it.channel.id }) { item ->
-                    FolderListItem(item.channel, active = false, depth = item.depth, onClick = {
-                        onSend(item.channel.id)
-                    })
-                }
-            }
-        }
-        if (createOpen) {
-            ShareCreateChannelDialog(
-                onClose = { createOpen = false },
-                onCreate = { name, icon, color ->
-                    onCreateChannel(name, icon, color)
-                    createOpen = false
-                }
-            )
-        }
-        if (state.toast != null) {
-            Surface(
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .fillMaxWidth()
-                    .padding(16.dp),
-                shape = RoundedCornerShape(FlesTheme.radius.lg),
-                color = if (state.error != null) colors.destructive else colors.primary
-            ) {
-                Row(modifier = Modifier.padding(12.dp), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
-                    if (state.sending) {
-                        CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp, color = colors.primaryForeground)
-                        Spacer(Modifier.width(8.dp))
-                    }
-                    Text(state.toast, color = colors.primaryForeground, fontWeight = FontWeight.SemiBold)
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun ShareCreateChannelDialog(onClose: () -> Unit, onCreate: (String, String, String) -> Unit) {
-    val colors = FlesTheme.colors
-    var name by remember { mutableStateOf("") }
-    AlertDialog(
-        onDismissRequest = onClose,
-        title = { Text("Nova pasta") },
-        text = { AppInput(name, { name = it }, "Ex.: Receitas") },
-        confirmButton = { AppButton("Criar pasta", enabled = name.trim().isNotBlank(), onClick = { onCreate(name, "Folder", "#3390ec") }) },
-        dismissButton = { AppButton("Cancelar", variant = AppButtonVariant.Ghost, onClick = onClose) },
-        containerColor = colors.background
-    )
-}
-
-@Composable
-private fun LinkPreviewCard(site: String?, title: String?, description: String?) {
-    if (site == null && title == null && description == null) return
-    val colors = FlesTheme.colors
-    Surface(
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
-        shape = RoundedCornerShape(FlesTheme.radius.lg),
-        color = colors.card,
-        border = BorderStroke(0.5.dp, colors.border)
-    ) {
-        Row(modifier = Modifier.padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
-            Box(modifier = Modifier.size(64.dp).clip(RoundedCornerShape(FlesTheme.radius.md)).background(colors.muted), contentAlignment = Alignment.Center) {
-                Icon(Icons.Filled.Link, null, modifier = Modifier.size(28.dp), tint = colors.mutedForeground)
-            }
-            Spacer(Modifier.width(12.dp))
-            Column(modifier = Modifier.weight(1f)) {
-                Text(site.orEmpty(), color = colors.primary, fontSize = 11.sp, fontWeight = FontWeight.Medium, maxLines = 1)
-                Text(title.orEmpty(), color = colors.foreground, fontSize = 14.sp, lineHeight = 18.sp, fontWeight = FontWeight.SemiBold, maxLines = 2)
-                Text(description.orEmpty(), color = colors.mutedForeground, fontSize = 12.sp, lineHeight = 16.sp, maxLines = 2)
             }
         }
     }

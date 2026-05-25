@@ -38,7 +38,6 @@ import com.archieapps.fles.ui.screens.MessagesScreen
 import com.archieapps.fles.ui.screens.SearchScreen
 import com.archieapps.fles.ui.screens.SecureFoldersScreen
 import com.archieapps.fles.ui.screens.SettingsScreen
-import com.archieapps.fles.ui.screens.ShareScreen
 import com.archieapps.fles.ui.screens.ThreadScreen
 import com.archieapps.fles.ui.state.UiState
 import com.archieapps.fles.ui.theme.FlesTheme
@@ -51,8 +50,6 @@ import com.archieapps.fles.ui.viewmodel.SearchViewModel
 import com.archieapps.fles.ui.viewmodel.SecureFoldersViewModel
 import com.archieapps.fles.ui.viewmodel.SessionState
 import com.archieapps.fles.ui.viewmodel.SessionViewModel
-import com.archieapps.fles.ui.viewmodel.ShareViewModel
-import com.archieapps.fles.ui.viewmodel.SharePayload
 import com.archieapps.fles.ui.viewmodel.ThreadViewModel
 
 class MainActivity : ComponentActivity() {
@@ -60,17 +57,16 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         setContent {
-            val appContainer = remember { AppContainer(applicationContext) }
-            val initialShare = remember { SharePayload.fromIntent(intent, appContainer.attachmentIo) }
+            val appContainer = (application as FlesApp).container
             FlesTheme {
-                FlesApp(appContainer, initialShare)
+                FlesAppRoot(appContainer)
             }
         }
     }
 }
 
 @Composable
-fun FlesApp(appContainer: AppContainer, initialShare: SharePayload?) {
+fun FlesAppRoot(appContainer: AppContainer) {
     val sessionViewModel = remember { SessionViewModel(appContainer.authRepository) }
     val sessionState by sessionViewModel.state.collectAsState()
 
@@ -82,7 +78,6 @@ fun FlesApp(appContainer: AppContainer, initialShare: SharePayload?) {
         )
         SessionState.Authenticated -> AuthenticatedNavHost(
             appContainer = appContainer,
-            initialShare = initialShare,
             onLogout = sessionViewModel::logout
         )
     }
@@ -143,7 +138,6 @@ private fun AuthNavHost(
 @Composable
 private fun AuthenticatedNavHost(
     appContainer: AppContainer,
-    initialShare: SharePayload?,
     onLogout: () -> Unit
 ) {
     val navController = rememberNavController()
@@ -195,7 +189,7 @@ private fun AuthenticatedNavHost(
 
     NavHost(
         navController = navController,
-        startDestination = if (initialShare != null) AppRoutes.Share else AppRoutes.Messages,
+        startDestination = AppRoutes.Messages,
         enterTransition = { EnterTransition.None },
         exitTransition = { ExitTransition.None },
         popEnterTransition = { EnterTransition.None },
@@ -372,22 +366,6 @@ private fun AuthenticatedNavHost(
                     onLock = secureViewModel::lock
                 )
             }
-        }
-        composable(AppRoutes.Share) {
-            val shareViewModel = remember { ShareViewModel(appContainer.channelsRepository, appContainer.messagesRepository, initialShare) }
-            val state by shareViewModel.state.collectAsState()
-            ShareScreen(
-                state = state,
-                onQueryChange = shareViewModel::onQueryChange,
-                onSend = { channelId ->
-                    shareViewModel.sendTo(channelId) {
-                        navController.navigate(AppRoutes.thread(channelId))
-                    }
-                },
-                onClose = { navController.navigate(AppRoutes.Messages) },
-                onThreadClick = { navController.navigate(AppRoutes.thread(it)) },
-                onCreateChannel = { name, icon, color -> createChannel(name, icon, color, false) }
-            )
         }
     }
 }
