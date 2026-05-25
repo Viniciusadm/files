@@ -55,6 +55,14 @@ class FilesViewModel(
         load()
     }
 
+    fun onGalleryGroupModeChange(value: GalleryGroupMode) {
+        _state.update { it.copy(galleryGroupMode = value, selectedGalleryFolderId = null) }
+    }
+
+    fun onSelectGalleryFolder(folderId: String?) {
+        _state.update { it.copy(selectedGalleryFolderId = folderId) }
+    }
+
     fun load() {
         viewModelScope.launch {
             runCatching {
@@ -93,6 +101,8 @@ class FilesViewModel(
     }
 }
 
+enum class GalleryGroupMode { Folders, All }
+
 data class FilesUiState(
     val folder: Channel? = null,
     val files: List<FileItem> = emptyList(),
@@ -101,7 +111,9 @@ data class FilesUiState(
     val favoritesOnly: Boolean = false,
     val activeKind: FileKind? = null,
     val loading: Boolean = false,
-    val error: String? = null
+    val error: String? = null,
+    val galleryGroupMode: GalleryGroupMode = GalleryGroupMode.Folders,
+    val selectedGalleryFolderId: String? = null
 ) {
     val isEmpty: Boolean = !loading && error == null && files.isEmpty()
 }

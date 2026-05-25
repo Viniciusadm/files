@@ -265,6 +265,8 @@ private fun AuthenticatedNavHost(
                     onModeChange = filesViewModel::onModeChange,
                     onFavoritesToggle = filesViewModel::onFavoritesToggle,
                     onKindChange = filesViewModel::onKindChange,
+                    onGroupModeChange = filesViewModel::onGalleryGroupModeChange,
+                    onSelectGalleryFolder = filesViewModel::onSelectGalleryFolder,
                     onEnsureLocalFile = filesViewModel::ensureLocalFile,
                     onOpenFile = { file, localFile -> openFile(context, localFile, file.mimeType).getOrThrow() }
                 )

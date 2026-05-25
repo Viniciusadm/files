@@ -32,6 +32,7 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Code
 import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.GridView
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.InsertDriveFile
@@ -61,6 +62,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
@@ -75,6 +77,7 @@ import androidx.compose.ui.window.DialogProperties
 import com.archieapps.fles.ui.model.FileKind
 import com.archieapps.fles.ui.model.FileItem
 import com.archieapps.fles.ui.model.SyncStatus
+import com.archieapps.fles.ui.viewmodel.GalleryGroupMode
 import com.archieapps.fles.ui.theme.FlesTheme
 import com.archieapps.fles.ui.theme.withAlpha
 import kotlinx.coroutines.Dispatchers
@@ -334,6 +337,162 @@ fun FileGridCard(
             maxLines = 2,
             overflow = TextOverflow.Ellipsis
         )
+    }
+}
+
+data class GalleryFolderGroup(
+    val folderId: String,
+    val folderName: String,
+    val count: Int,
+    val cover: FileItem
+)
+
+@Composable
+fun GalleryModeToggle(
+    mode: GalleryGroupMode,
+    onChange: (GalleryGroupMode) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val colors = FlesTheme.colors
+    Row(
+        modifier = modifier
+            .clip(RoundedCornerShape(FlesTheme.radius.full))
+            .background(colors.muted)
+            .padding(3.dp),
+        horizontalArrangement = Arrangement.spacedBy(2.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        GalleryModeSegment(
+            label = "Pastas",
+            icon = Icons.Filled.Folder,
+            active = mode == GalleryGroupMode.Folders,
+            onClick = { onChange(GalleryGroupMode.Folders) }
+        )
+        GalleryModeSegment(
+            label = "Todos",
+            icon = Icons.Filled.GridView,
+            active = mode == GalleryGroupMode.All,
+            onClick = { onChange(GalleryGroupMode.All) }
+        )
+    }
+}
+
+@Composable
+private fun GalleryModeSegment(
+    label: String,
+    icon: ImageVector,
+    active: Boolean,
+    onClick: () -> Unit
+) {
+    val colors = FlesTheme.colors
+    val bg = if (active) colors.background else Color.Transparent
+    val fg = if (active) colors.foreground else colors.mutedForeground
+    Row(
+        modifier = Modifier
+            .clip(RoundedCornerShape(FlesTheme.radius.full))
+            .background(bg)
+            .clickable(onClick = onClick)
+            .padding(horizontal = 14.dp, vertical = 8.dp),
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(icon, null, modifier = Modifier.size(14.dp), tint = fg)
+        Text(
+            label,
+            color = fg,
+            fontSize = 12.sp,
+            fontWeight = if (active) FontWeight.SemiBold else FontWeight.Medium
+        )
+    }
+}
+
+@Composable
+fun GalleryFolderCard(
+    group: GalleryFolderGroup,
+    modifier: Modifier = Modifier,
+    onEnsureLocalFile: (suspend (FileItem) -> File)? = null,
+    onClick: () -> Unit = {}
+) {
+    val colors = FlesTheme.colors
+    val cover = group.cover
+    val previewBitmap = rememberGridPreviewBitmap(cover, onEnsureLocalFile)
+    val videoLocalPath = if (cover.kind == FileKind.Video) {
+        cover.localPath?.removePrefix("file://")?.let { File(it).takeIf { f -> f.exists() }?.absolutePath }
+    } else null
+    val videoMeta = if (cover.kind == FileKind.Video) rememberVideoMeta(videoLocalPath) else null
+    Box(
+        modifier = modifier
+            .shadow(1.dp, RoundedCornerShape(FlesTheme.radius.x2l))
+            .clip(RoundedCornerShape(FlesTheme.radius.x2l))
+            .background(colors.card)
+            .border(1.dp, colors.border, RoundedCornerShape(FlesTheme.radius.x2l))
+            .clickable(onClick = onClick)
+            .aspectRatio(1f)
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(cover.previewColor ?: colors.muted)
+        ) {
+            val videoThumb = videoMeta?.thumbnail
+            when {
+                videoThumb != null -> Image(
+                    bitmap = videoThumb,
+                    contentDescription = group.folderName,
+                    modifier = Modifier.fillMaxSize(),
+                    contentScale = ContentScale.Crop
+                )
+                previewBitmap != null -> Image(
+                    bitmap = previewBitmap,
+                    contentDescription = group.folderName,
+                    modifier = Modifier.fillMaxSize(),
+                    contentScale = ContentScale.Crop
+                )
+                else -> FileIconBadge(cover.kind, large = true, modifier = Modifier.align(Alignment.Center))
+            }
+        }
+        if (cover.kind == FileKind.Video) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(8.dp)
+                    .size(28.dp)
+                    .clip(CircleShape)
+                    .background(Color.Black.withAlpha(0.55f)),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(Icons.Filled.PlayArrow, null, modifier = Modifier.size(16.dp), tint = Color.White)
+            }
+        }
+        Box(
+            modifier = Modifier
+                .align(Alignment.BottomStart)
+                .fillMaxWidth()
+                .background(
+                    Brush.verticalGradient(
+                        colors = listOf(Color.Transparent, Color.Black.withAlpha(0.7f))
+                    )
+                )
+                .padding(horizontal = 12.dp, vertical = 10.dp)
+        ) {
+            Column {
+                Text(
+                    group.folderName,
+                    color = Color.White,
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Text(
+                    if (group.count == 1) "1 item" else "${group.count} itens",
+                    color = Color.White.withAlpha(0.85f),
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Medium,
+                    maxLines = 1
+                )
+            }
+        }
     }
 }
 
