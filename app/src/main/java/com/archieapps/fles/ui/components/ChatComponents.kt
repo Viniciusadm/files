@@ -36,6 +36,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.verticalScroll
@@ -63,6 +64,7 @@ import androidx.compose.material.icons.filled.Inbox
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.PhotoLibrary
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.AlertDialog
@@ -504,12 +506,20 @@ fun AttachmentGrid(
 ) {
     if (attachments.isEmpty()) return
     val images = attachments.filter { it.kind == FileKind.Image }
-    val docs = attachments.filter { it.kind != FileKind.Image }
+    val videos = attachments.filter { it.kind == FileKind.Video }
+    val docs = attachments.filter { it.kind != FileKind.Image && it.kind != FileKind.Video }
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
         if (images.isNotEmpty()) {
             FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 images.forEach { attachment ->
                     ImageThumb(attachment = attachment, height = 200.dp, onRetryUpload = onRetryUpload, onCancelUpload = onCancelUpload, onDownload = onDownload)
+                }
+            }
+        }
+        if (videos.isNotEmpty()) {
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                videos.forEach { attachment ->
+                    VideoThumb(attachment = attachment, height = 200.dp, onRetryUpload = onRetryUpload, onCancelUpload = onCancelUpload, onDownload = onDownload)
                 }
             }
         }
@@ -519,6 +529,118 @@ fun AttachmentGrid(
                     DocumentAttachmentCard(attachment, onRetryUpload, onCancelUpload, onDownload)
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun VideoThumb(
+    attachment: Attachment,
+    height: Dp,
+    onRetryUpload: () -> Unit,
+    onCancelUpload: () -> Unit,
+    onDownload: suspend (Attachment) -> File
+) {
+    val colors = FlesTheme.colors
+    val scope = rememberCoroutineScope()
+    var localFile by remember(attachment.id, attachment.localPath) {
+        mutableStateOf(attachment.localPath?.removePrefix("file://")?.let { File(it).takeIf { f -> f.exists() } })
+    }
+    var loading by remember(attachment.id) { mutableStateOf(false) }
+    var loadFailed by remember(attachment.id) { mutableStateOf(false) }
+    var playerOpen by remember(attachment.id) { mutableStateOf(false) }
+    val ready = attachment.uploadStatus == UploadStatus.Uploaded
+    val meta = rememberVideoMeta(localFile?.absolutePath)
+    val durationLabel = formatVideoDuration(meta.durationMs)
+
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(height)
+            .clip(RoundedCornerShape(FlesTheme.radius.lg))
+            .background(Color.Black)
+            .border(BorderStroke(0.5.dp, colors.border), RoundedCornerShape(FlesTheme.radius.lg))
+            .clickable(enabled = ready) {
+                if (localFile != null) {
+                    playerOpen = true
+                    return@clickable
+                }
+                loading = true
+                loadFailed = false
+                scope.launch {
+                    runCatching { onDownload(attachment) }
+                        .onSuccess {
+                            localFile = it
+                            playerOpen = true
+                        }
+                        .onFailure { loadFailed = true }
+                    loading = false
+                }
+            },
+        contentAlignment = Alignment.Center
+    ) {
+        val thumbnail = meta.thumbnail
+        if (thumbnail != null) {
+            Image(
+                bitmap = thumbnail,
+                contentDescription = attachment.fileName,
+                modifier = Modifier.fillMaxSize(),
+                contentScale = ContentScale.Crop
+            )
+        }
+        Box(
+            modifier = Modifier
+                .size(56.dp)
+                .clip(CircleShape)
+                .background(Color.Black.withAlpha(0.55f)),
+            contentAlignment = Alignment.Center
+        ) {
+            if (loading) {
+                CircularProgressIndicator(modifier = Modifier.size(28.dp), color = Color.White, strokeWidth = 2.dp)
+            } else {
+                Icon(
+                    Icons.Filled.PlayArrow,
+                    contentDescription = "Reproduzir",
+                    tint = Color.White,
+                    modifier = Modifier.size(32.dp)
+                )
+            }
+        }
+        if (durationLabel.isNotEmpty()) {
+            AttachmentBadge(
+                label = durationLabel,
+                background = Color.Black.withAlpha(0.6f),
+                modifier = Modifier.align(Alignment.BottomEnd).padding(6.dp)
+            )
+        }
+        if (attachment.uploadStatus != UploadStatus.Uploaded) {
+            UploadProgressPanel(
+                attachment = attachment,
+                onRetry = onRetryUpload,
+                onCancel = onCancelUpload,
+                modifier = Modifier.align(Alignment.BottomCenter).padding(6.dp)
+            )
+        }
+        if (loadFailed) {
+            Text(
+                "Falha ao carregar vídeo",
+                color = Color.White,
+                fontSize = 11.sp,
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .padding(top = 8.dp)
+            )
+        }
+    }
+
+    if (playerOpen) {
+        val file = localFile
+        if (file != null) {
+            VideoPlayerOverlay(
+                title = attachment.fileName,
+                uri = android.net.Uri.fromFile(file).toString(),
+                onClose = { playerOpen = false }
+            )
         }
     }
 }

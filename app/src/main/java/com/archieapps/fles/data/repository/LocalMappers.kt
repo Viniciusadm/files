@@ -123,13 +123,17 @@ fun String.toUiUploadStatus(): UploadStatus {
 fun FileKind.toRemoteKind(): String {
     return when (this) {
         FileKind.Image -> "image"
+        FileKind.Video -> "video"
+        FileKind.Audio -> "audio"
         FileKind.Pdf -> "pdf"
+        FileKind.Archive -> "archive"
         FileKind.Code -> "code"
+        FileKind.Link -> "link"
         FileKind.Document,
         FileKind.Text,
         FileKind.Spreadsheet,
         FileKind.Presentation -> "document"
-        else -> "other"
+        FileKind.Other -> "other"
     }
 }
 
@@ -157,10 +161,13 @@ private fun String.toUiMessageType(attachments: List<Attachment>): MessageType {
 private fun String?.toFileKind(mimeType: String?, fileName: String?, extension: String?): FileKind {
     when (this?.lowercase()) {
         "image" -> return FileKind.Image
+        "video" -> return FileKind.Video
+        "audio" -> return FileKind.Audio
         "document" -> return FileKind.Document
         "pdf" -> return FileKind.Pdf
+        "archive" -> return FileKind.Archive
         "code" -> return FileKind.Code
-        "other" -> return FileKind.Other
+        "link" -> return FileKind.Link
     }
     val mime = mimeType.orEmpty().lowercase()
     val ext = (extension ?: fileName?.substringAfterLast('.', "")).orEmpty().lowercase()

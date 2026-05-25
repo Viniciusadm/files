@@ -38,6 +38,7 @@ import androidx.compose.material.icons.filled.InsertDriveFile
 import androidx.compose.material.icons.filled.Link
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.PictureAsPdf
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Slideshow
 import androidx.compose.material.icons.filled.Sort
@@ -196,8 +197,8 @@ fun FilesToolbar(
                     Text("Favoritos", color = if (favoritesOnly) Color(0xFFA16207) else colors.mutedForeground, fontSize = 12.sp, fontWeight = FontWeight.Medium)
                 }
             }
-            listOf(null, FileKind.Image, FileKind.Document, FileKind.Pdf, FileKind.Archive, FileKind.Link).forEach { kind ->
-                val label = kind?.let { kindStyle(it).label + if (it == FileKind.Archive) "s" else "" } ?: "Todos"
+            listOf(null, FileKind.Image, FileKind.Video, FileKind.Document, FileKind.Pdf, FileKind.Archive, FileKind.Link).forEach { kind ->
+                val label = kind?.let { kindStyle(it).label + if (it == FileKind.Archive || it == FileKind.Video) "s" else "" } ?: "Todos"
                 Badge(label, active = activeKind == kind, modifier = Modifier.clickable { onKindChange(kind) })
             }
         }
@@ -214,6 +215,10 @@ fun FileGridCard(
     val colors = FlesTheme.colors
     val style = kindStyle(file.kind)
     val previewBitmap = rememberGridPreviewBitmap(file, onEnsureLocalFile)
+    val videoLocalPath = if (file.kind == FileKind.Video) {
+        file.localPath?.removePrefix("file://")?.let { File(it).takeIf { f -> f.exists() }?.absolutePath }
+    } else null
+    val videoMeta = if (file.kind == FileKind.Video) rememberVideoMeta(videoLocalPath) else null
     Column(
         modifier = modifier
             .shadow(1.dp, RoundedCornerShape(FlesTheme.radius.x2l))
@@ -228,15 +233,62 @@ fun FileGridCard(
                 .aspectRatio(4f / 3f)
                 .background(file.previewColor ?: colors.muted)
         ) {
-            if (previewBitmap != null) {
-                Image(
-                    bitmap = previewBitmap,
-                    contentDescription = file.name,
-                    modifier = Modifier.fillMaxSize(),
-                    contentScale = ContentScale.Crop
-                )
-            } else {
-                FileIconBadge(file.kind, large = true, modifier = Modifier.align(Alignment.Center))
+            val videoThumb = videoMeta?.thumbnail
+            when {
+                videoThumb != null -> {
+                    Image(
+                        bitmap = videoThumb,
+                        contentDescription = file.name,
+                        modifier = Modifier.fillMaxSize(),
+                        contentScale = ContentScale.Crop
+                    )
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.Center)
+                            .size(44.dp)
+                            .clip(CircleShape)
+                            .background(Color.Black.withAlpha(0.55f)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(Icons.Filled.PlayArrow, null, modifier = Modifier.size(26.dp), tint = Color.White)
+                    }
+                }
+                previewBitmap != null -> {
+                    Image(
+                        bitmap = previewBitmap,
+                        contentDescription = file.name,
+                        modifier = Modifier.fillMaxSize(),
+                        contentScale = ContentScale.Crop
+                    )
+                }
+                file.kind == FileKind.Video -> {
+                    FileIconBadge(file.kind, large = true, modifier = Modifier.align(Alignment.Center))
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.Center)
+                            .size(44.dp)
+                            .clip(CircleShape)
+                            .background(Color.Black.withAlpha(0.35f)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(Icons.Filled.PlayArrow, null, modifier = Modifier.size(24.dp), tint = Color.White)
+                    }
+                }
+                else -> {
+                    FileIconBadge(file.kind, large = true, modifier = Modifier.align(Alignment.Center))
+                }
+            }
+            val durationLabel = videoMeta?.durationMs?.let { formatVideoDuration(it) }
+            if (!durationLabel.isNullOrEmpty()) {
+                Surface(
+                    modifier = Modifier
+                        .align(Alignment.BottomEnd)
+                        .padding(8.dp),
+                    shape = RoundedCornerShape(FlesTheme.radius.sm),
+                    color = Color.Black.withAlpha(0.65f)
+                ) {
+                    Text(durationLabel, modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp), color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.SemiBold)
+                }
             }
             Surface(
                 modifier = Modifier
@@ -279,6 +331,10 @@ fun FileGridCard(
 @Composable
 fun FileListRow(file: FileItem, modifier: Modifier = Modifier, onClick: () -> Unit = {}) {
     val colors = FlesTheme.colors
+    val videoLocalPath = if (file.kind == FileKind.Video) {
+        file.localPath?.removePrefix("file://")?.let { File(it).takeIf { f -> f.exists() }?.absolutePath }
+    } else null
+    val videoMeta = if (file.kind == FileKind.Video) rememberVideoMeta(videoLocalPath) else null
     Row(
         modifier = modifier
             .fillMaxWidth()
@@ -287,7 +343,29 @@ fun FileListRow(file: FileItem, modifier: Modifier = Modifier, onClick: () -> Un
             .padding(horizontal = 12.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        FileIconBadge(file.kind)
+        val thumb = videoMeta?.thumbnail
+        if (thumb != null) {
+            Box(
+                modifier = Modifier
+                    .size(40.dp)
+                    .clip(RoundedCornerShape(FlesTheme.radius.md))
+                    .background(Color.Black),
+                contentAlignment = Alignment.Center
+            ) {
+                Image(bitmap = thumb, contentDescription = file.name, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
+                Box(
+                    modifier = Modifier
+                        .size(20.dp)
+                        .clip(CircleShape)
+                        .background(Color.Black.withAlpha(0.55f)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(Icons.Filled.PlayArrow, null, modifier = Modifier.size(14.dp), tint = Color.White)
+                }
+            }
+        } else {
+            FileIconBadge(file.kind)
+        }
         Spacer(Modifier.width(12.dp))
         Column(modifier = Modifier.weight(1f)) {
             Text(file.name, color = colors.foreground, fontSize = 14.sp, lineHeight = 20.sp, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -318,6 +396,7 @@ fun FileDetailsDialog(
     var previewText by remember(file.id) { mutableStateOf<String?>(null) }
     var opening by remember(file.id) { mutableStateOf(false) }
     var openError by remember(file.id) { mutableStateOf<String?>(null) }
+    var videoPlayerOpen by remember(file.id) { mutableStateOf(false) }
 
     LaunchedEffect(file.id, file.localPath) {
         if (!previewable) return@LaunchedEffect
@@ -369,7 +448,26 @@ fun FileDetailsDialog(
                     localFile = localFile,
                     previewText = previewText,
                     loading = previewLoading,
-                    error = previewError
+                    error = previewError,
+                    onPlayVideo = if (file.kind == FileKind.Video) {
+                        {
+                            if (localFile != null) {
+                                videoPlayerOpen = true
+                            } else if (!opening) {
+                                opening = true
+                                openError = null
+                                scope.launch {
+                                    runCatching { onEnsureLocalFile(file) }
+                                        .onSuccess {
+                                            localFile = it
+                                            videoPlayerOpen = true
+                                        }
+                                        .onFailure { openError = it.message ?: "Falha ao carregar vídeo" }
+                                    opening = false
+                                }
+                            }
+                        }
+                    } else null
                 )
 
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -414,6 +512,17 @@ fun FileDetailsDialog(
             }
         }
     }
+
+    if (videoPlayerOpen) {
+        val playableFile = localFile
+        if (playableFile != null) {
+            VideoPlayerOverlay(
+                title = file.name,
+                uri = android.net.Uri.fromFile(playableFile).toString(),
+                onClose = { videoPlayerOpen = false }
+            )
+        }
+    }
 }
 
 @Composable
@@ -422,7 +531,8 @@ private fun FilePreviewPanel(
     localFile: File?,
     previewText: String?,
     loading: Boolean,
-    error: String?
+    error: String?,
+    onPlayVideo: (() -> Unit)? = null
 ) {
     val colors = FlesTheme.colors
     Box(
@@ -438,6 +548,41 @@ private fun FilePreviewPanel(
         when {
             loading -> CircularProgressIndicator(color = colors.primary)
             error != null -> Text(error, color = colors.destructive, fontSize = 13.sp, lineHeight = 18.sp)
+            file.kind == FileKind.Video -> {
+                val meta = rememberVideoMeta(localFile?.absolutePath)
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .clip(RoundedCornerShape(FlesTheme.radius.lg))
+                        .background(Color.Black)
+                        .clickable(enabled = onPlayVideo != null) { onPlayVideo?.invoke() },
+                    contentAlignment = Alignment.Center
+                ) {
+                    val thumb = meta.thumbnail
+                    if (thumb != null) {
+                        Image(bitmap = thumb, contentDescription = file.name, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Fit)
+                    }
+                    Box(
+                        modifier = Modifier
+                            .size(64.dp)
+                            .clip(CircleShape)
+                            .background(Color.Black.withAlpha(0.55f)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(Icons.Filled.PlayArrow, null, modifier = Modifier.size(36.dp), tint = Color.White)
+                    }
+                    val durationLabel = formatVideoDuration(meta.durationMs)
+                    if (durationLabel.isNotEmpty()) {
+                        Surface(
+                            modifier = Modifier.align(Alignment.BottomEnd).padding(8.dp),
+                            shape = RoundedCornerShape(FlesTheme.radius.sm),
+                            color = Color.Black.withAlpha(0.65f)
+                        ) {
+                            Text(durationLabel, modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp), color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                        }
+                    }
+                }
+            }
             file.isImagePreviewable() -> {
                 val bitmap = remember(localFile?.absolutePath) {
                     localFile?.absolutePath?.let { BitmapFactory.decodeFile(it)?.asImageBitmap() }

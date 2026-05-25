@@ -130,10 +130,13 @@ private fun String?.toFileKind(mimeType: String?, fileName: String?, extension: 
     if (kind != null) {
         when (kind) {
             "image" -> return FileKind.Image
+            "video" -> return FileKind.Video
+            "audio" -> return FileKind.Audio
             "document" -> return FileKind.Document
             "pdf" -> return FileKind.Pdf
+            "archive" -> return FileKind.Archive
             "code" -> return FileKind.Code
-            "other" -> return FileKind.Other
+            "link" -> return FileKind.Link
         }
     }
     val mime = mimeType.orEmpty().lowercase()
