@@ -28,7 +28,7 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Key
 import androidx.compose.material.icons.filled.Link
-import androidx.compose.material.icons.filled.Menu
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material.icons.filled.Refresh
@@ -72,7 +72,7 @@ import com.archieapps.fles.ui.viewmodel.ShareUiState
 @Composable
 fun SearchScreen(
     state: SearchUiState,
-    openDrawer: () -> Unit,
+    onBack: () -> Unit,
     onQueryChange: (String) -> Unit,
     onThreadClick: (String) -> Unit
 ) {
@@ -85,7 +85,7 @@ fun SearchScreen(
                 .padding(horizontal = 12.dp, vertical = 10.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            IconButtonBox(Icons.Filled.Menu, onClick = openDrawer)
+            IconButtonBox(Icons.AutoMirrored.Filled.KeyboardArrowLeft, onClick = onBack, iconSize = 22.dp)
             Spacer(Modifier.width(8.dp))
             AppInput(state.query, onQueryChange, "Buscar mensagens...", leadingIcon = Icons.Filled.Search, modifier = Modifier.weight(1f))
         }
@@ -125,7 +125,7 @@ fun SearchScreen(
 @Composable
 fun KeyScreen(
     state: KeyUiState,
-    openDrawer: () -> Unit,
+    onBack: () -> Unit,
     onValueChange: (String) -> Unit,
     onSave: () -> Unit,
     onGenerate: () -> Unit,
@@ -134,7 +134,7 @@ fun KeyScreen(
     val colors = FlesTheme.colors
     Column(modifier = Modifier.fillMaxSize().background(colors.background)) {
         Row(modifier = Modifier.fillMaxWidth().padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
-            IconButtonBox(Icons.Filled.Menu, onClick = openDrawer)
+            IconButtonBox(Icons.AutoMirrored.Filled.KeyboardArrowLeft, onClick = onBack, iconSize = 22.dp)
         }
         Column(
             modifier = Modifier

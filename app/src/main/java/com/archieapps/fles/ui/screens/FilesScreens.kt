@@ -7,19 +7,20 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.ErrorOutline
-import androidx.compose.material.icons.filled.FolderOpen
-import androidx.compose.material.icons.filled.Menu
+import androidx.compose.material.icons.filled.PhotoLibrary
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Icon
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Text
@@ -31,7 +32,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.archieapps.fles.ui.components.EmptyState
@@ -40,61 +40,30 @@ import com.archieapps.fles.ui.components.FileGridCard
 import com.archieapps.fles.ui.components.FileListRow
 import com.archieapps.fles.ui.components.FilesToolbar
 import com.archieapps.fles.ui.components.FilesViewMode
-import com.archieapps.fles.ui.components.FolderAvatar
 import com.archieapps.fles.ui.components.IconButtonBox
-import com.archieapps.fles.ui.components.folderIcon
-import com.archieapps.fles.ui.model.Channel
+import com.archieapps.fles.ui.components.MediaPagerOverlay
 import com.archieapps.fles.ui.model.FileItem
+import com.archieapps.fles.ui.model.FileKind
 import com.archieapps.fles.ui.theme.FlesTheme
 import com.archieapps.fles.ui.viewmodel.FilesUiState
 import java.io.File
 
 @Composable
-fun FilesScreen(
+fun GalleryScreen(
     state: FilesUiState,
-    openDrawer: () -> Unit,
+    onOpenSettings: () -> Unit,
     onQueryChange: (String) -> Unit,
     onModeChange: (FilesViewMode) -> Unit,
     onFavoritesToggle: () -> Unit,
     onKindChange: (com.archieapps.fles.ui.model.FileKind?) -> Unit,
     onEnsureLocalFile: suspend (FileItem) -> File,
-    onOpenFile: suspend (FileItem, File) -> Unit,
-    favoritesOnlyInitial: Boolean = false
-) {
-    FilesScaffold(
-        openDrawer = openDrawer,
-        state = state,
-        onQueryChange = onQueryChange,
-        onModeChange = onModeChange,
-        onFavoritesToggle = onFavoritesToggle,
-        onKindChange = onKindChange,
-        onEnsureLocalFile = onEnsureLocalFile,
-        onOpenFile = onOpenFile,
-        emptyTitle = when {
-            favoritesOnlyInitial -> "Sem favoritos"
-            state.folder != null -> "Sem arquivos nesta pasta"
-            else -> "Sem arquivos por aqui"
-        }
-    )
-}
-
-@Composable
-private fun FilesScaffold(
-    openDrawer: () -> Unit,
-    state: FilesUiState,
-    onQueryChange: (String) -> Unit,
-    onModeChange: (FilesViewMode) -> Unit,
-    onFavoritesToggle: () -> Unit,
-    onKindChange: (com.archieapps.fles.ui.model.FileKind?) -> Unit,
-    onEnsureLocalFile: suspend (FileItem) -> File,
-    onOpenFile: suspend (FileItem, File) -> Unit,
-    emptyTitle: String
+    onOpenFile: suspend (FileItem, File) -> Unit
 ) {
     val colors = FlesTheme.colors
     var selectedFile by remember { mutableStateOf<FileItem?>(null) }
 
     Column(modifier = Modifier.fillMaxSize().background(colors.background)) {
-        FilesHeader(openDrawer = openDrawer, folder = state.folder)
+        GalleryHeader(onOpenSettings = onOpenSettings)
         FilesToolbar(
             query = state.query,
             onQueryChange = onQueryChange,
@@ -112,12 +81,12 @@ private fun FilesScaffold(
         } else if (state.error != null) {
             EmptyState(title = "Erro ao carregar", description = state.error, icon = Icons.Filled.ErrorOutline, modifier = Modifier.fillMaxSize())
         } else if (state.files.isEmpty()) {
-            EmptyState(title = emptyTitle, description = null, icon = Icons.Filled.FolderOpen, modifier = Modifier.fillMaxSize())
+            EmptyState(title = "Sem mídias por aqui", description = null, icon = Icons.Filled.PhotoLibrary, modifier = Modifier.fillMaxSize())
         } else if (state.mode == FilesViewMode.Grid) {
             LazyVerticalGrid(
                 columns = GridCells.Fixed(2),
                 modifier = Modifier.fillMaxSize(),
-                contentPadding = PaddingValues(12.dp),
+                contentPadding = PaddingValues(start = 12.dp, end = 12.dp, top = 12.dp, bottom = 96.dp),
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
@@ -126,7 +95,10 @@ private fun FilesScaffold(
                 }
             }
         } else {
-            LazyColumn(modifier = Modifier.fillMaxSize()) {
+            LazyColumn(
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(bottom = 96.dp)
+            ) {
                 items(state.files, key = { it.id }) {
                     FileListRow(file = it, onClick = { selectedFile = it })
                 }
@@ -134,17 +106,32 @@ private fun FilesScaffold(
         }
     }
     selectedFile?.let { file ->
-        FileDetailsDialog(
-            file = file,
-            onClose = { selectedFile = null },
-            onEnsureLocalFile = onEnsureLocalFile,
-            onOpenFile = onOpenFile
-        )
+        if (file.kind == FileKind.Image || file.kind == FileKind.Video) {
+            val mediaList = remember(state.files) {
+                state.files.filter { it.kind == FileKind.Image || it.kind == FileKind.Video }
+            }
+            val startIndex = remember(file.id, mediaList) {
+                mediaList.indexOfFirst { it.id == file.id }.coerceAtLeast(0)
+            }
+            MediaPagerOverlay(
+                files = mediaList,
+                initialIndex = startIndex,
+                onEnsureLocalFile = onEnsureLocalFile,
+                onClose = { selectedFile = null }
+            )
+        } else {
+            FileDetailsDialog(
+                file = file,
+                onClose = { selectedFile = null },
+                onEnsureLocalFile = onEnsureLocalFile,
+                onOpenFile = onOpenFile
+            )
+        }
     }
 }
 
 @Composable
-private fun FilesHeader(openDrawer: () -> Unit, folder: Channel?) {
+private fun GalleryHeader(onOpenSettings: () -> Unit) {
     val colors = FlesTheme.colors
     Row(
         modifier = Modifier
@@ -154,17 +141,14 @@ private fun FilesHeader(openDrawer: () -> Unit, folder: Channel?) {
             .padding(horizontal = 12.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        IconButtonBox(Icons.Filled.Menu, onClick = openDrawer)
-        Row(modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-            Icon(Icons.Filled.FolderOpen, null, tint = colors.mutedForeground)
-            Text("Arquivos", modifier = Modifier.padding(start = 6.dp), color = colors.mutedForeground, fontSize = 14.sp, fontWeight = FontWeight.Medium)
+        Row(
+            modifier = Modifier.weight(1f).padding(horizontal = 8.dp, vertical = 6.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(Icons.Filled.PhotoLibrary, null, tint = colors.mutedForeground)
+            Spacer(Modifier.width(6.dp))
+            Text("Galeria", color = colors.mutedForeground, fontSize = 14.sp, fontWeight = FontWeight.Medium)
         }
-        if (folder != null) {
-            Icon(Icons.Filled.ChevronRight, null, tint = colors.mutedForeground)
-            Row(modifier = Modifier.padding(start = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-                FolderAvatar(folder.name, folder.color, size = 32.dp, icon = folderIcon(folder.icon))
-                Text(folder.name, modifier = Modifier.padding(start = 6.dp), color = colors.foreground, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            }
-        }
+        IconButtonBox(Icons.Filled.Settings, onClick = onOpenSettings)
     }
 }

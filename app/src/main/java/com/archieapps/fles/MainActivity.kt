@@ -30,12 +30,14 @@ import com.archieapps.fles.di.AppContainer
 import com.archieapps.fles.ui.components.AppShell
 import com.archieapps.fles.ui.components.MainSection
 import com.archieapps.fles.ui.navigation.AppRoutes
-import com.archieapps.fles.ui.screens.FilesScreen
+import com.archieapps.fles.ui.screens.FilesExplorerScreen
+import com.archieapps.fles.ui.screens.GalleryScreen
 import com.archieapps.fles.ui.screens.KeyScreen
 import com.archieapps.fles.ui.screens.LoginScreen
 import com.archieapps.fles.ui.screens.MessagesScreen
 import com.archieapps.fles.ui.screens.SearchScreen
 import com.archieapps.fles.ui.screens.SecureFoldersScreen
+import com.archieapps.fles.ui.screens.SettingsScreen
 import com.archieapps.fles.ui.screens.ShareScreen
 import com.archieapps.fles.ui.screens.ThreadScreen
 import com.archieapps.fles.ui.state.UiState
@@ -128,7 +130,7 @@ private fun AuthNavHost(
             val state by keyViewModel.state.collectAsState()
             KeyScreen(
                 state = state,
-                openDrawer = { navController.navigate(AppRoutes.Login) },
+                onBack = { navController.popBackStack() },
                 onValueChange = keyViewModel::onValueChange,
                 onSave = keyViewModel::save,
                 onGenerate = keyViewModel::generate,
@@ -148,7 +150,6 @@ private fun AuthenticatedNavHost(
     LaunchedEffect(Unit) {
         appContainer.syncScheduler.scheduleNow()
     }
-    val syncRuntimeState by appContainer.syncStatusStore.state.collectAsState()
     val messagesViewModel = remember { MessagesViewModel(appContainer.channelsRepository) }
     val channelsState by messagesViewModel.state.collectAsState()
     val channels = (channelsState as? UiState.Success)?.data.orEmpty()
@@ -166,9 +167,30 @@ private fun AuthenticatedNavHost(
             if (homeChannels.isEmpty()) UiState.Empty else UiState.Success(homeChannels)
         }
     }
+    val allChannels = channels + secureChannels
     val createChannel: (String, String, String, Boolean) -> Unit = { name, icon, color, isSecure -> messagesViewModel.createChannel(name, icon, color, isSecure) }
     val createSubfolder: (String, String, String, Boolean, String) -> Unit = { name, icon, color, isSecure, parentLocalId ->
         messagesViewModel.createChannel(name, icon, color, isSecure, parentLocalId)
+    }
+
+    val openSettings: () -> Unit = { navController.navigate(AppRoutes.Settings) }
+    val navigateMessages: () -> Unit = {
+        navController.navigate(AppRoutes.Messages) {
+            popUpTo(AppRoutes.Messages) { inclusive = true }
+            launchSingleTop = true
+        }
+    }
+    val navigateGallery: () -> Unit = {
+        navController.navigate(AppRoutes.Gallery) {
+            popUpTo(AppRoutes.Messages)
+            launchSingleTop = true
+        }
+    }
+    val navigateFiles: () -> Unit = {
+        navController.navigate(AppRoutes.Files) {
+            popUpTo(AppRoutes.Messages)
+            launchSingleTop = true
+        }
     }
 
     NavHost(
@@ -180,11 +202,12 @@ private fun AuthenticatedNavHost(
         popExitTransition = { ExitTransition.None }
     ) {
         composable(AppRoutes.Messages) {
-            Shell(navController, MainSection.Messages, null, channels, secureChannels, secureState.unlocked, createChannel, onLogout, syncRuntimeState) { openDrawer ->
+            Shell(MainSection.Messages, navigateMessages, navigateGallery, navigateFiles) {
                 MessagesScreen(
                     state = homeChannelsState,
-                    openDrawer = openDrawer,
-                    onThreadClick = { navController.navigate(AppRoutes.thread(it)) }
+                    onOpenSettings = openSettings,
+                    onThreadClick = { navController.navigate(AppRoutes.thread(it)) },
+                    onNavigateSearch = { navController.navigate(AppRoutes.search(it)) }
                 )
             }
         }
@@ -200,16 +223,16 @@ private fun AuthenticatedNavHost(
             val action by threadViewModel.action.collectAsState()
             var keyConfigured by remember { mutableStateOf(false) }
             LaunchedEffect(Unit) { keyConfigured = appContainer.cryptoRepository.hasKey() }
-            Shell(navController, MainSection.Messages, folderId, channels, secureChannels, secureState.unlocked, createChannel, onLogout, syncRuntimeState) { openDrawer ->
+            Shell(MainSection.Messages, navigateMessages, navigateGallery, navigateFiles, showBottomNav = false) {
                 ThreadScreen(
                     state = state,
                     action = action,
-                    channels = channels + secureChannels,
+                    channels = allChannels,
                     attachmentIo = appContainer.attachmentIo,
                     keyConfigured = keyConfigured,
-                    openDrawer = openDrawer,
-                    onBack = { navController.navigate(AppRoutes.Messages) },
-                    onDeleteThread = { threadViewModel.deleteThread { navController.navigate(AppRoutes.Messages) } },
+                    onOpenSettings = openSettings,
+                    onBack = { navController.popBackStack() },
+                    onDeleteThread = { threadViewModel.deleteThread { navController.popBackStack() } },
                     onCreateSubfolder = { name, icon, color, isSecure -> createSubfolder(name, icon, color, isSecure, folderId) },
                     onSend = { text, attachments -> threadViewModel.send(text, attachments) {} },
                     onCreateList = { title, items -> threadViewModel.createChecklist(title, items) {} },
@@ -228,20 +251,39 @@ private fun AuthenticatedNavHost(
                 )
             }
         }
-        composable(AppRoutes.Files) {
-            val filesViewModel = remember {
+        composable(AppRoutes.Gallery) {
+            val filesViewModel = remember(secureState.unlocked) {
                 FilesViewModel(null, false, appContainer.channelsRepository, appContainer.filesRepository)
             }
             val state by filesViewModel.state.collectAsState()
             val context = LocalContext.current
-            Shell(navController, MainSection.Files, null, channels, secureChannels, secureState.unlocked, createChannel, onLogout, syncRuntimeState) { openDrawer ->
-                FilesScreen(
+            Shell(MainSection.Gallery, navigateMessages, navigateGallery, navigateFiles) {
+                GalleryScreen(
                     state = state,
-                    openDrawer = openDrawer,
+                    onOpenSettings = openSettings,
                     onQueryChange = filesViewModel::onQueryChange,
                     onModeChange = filesViewModel::onModeChange,
                     onFavoritesToggle = filesViewModel::onFavoritesToggle,
                     onKindChange = filesViewModel::onKindChange,
+                    onEnsureLocalFile = filesViewModel::ensureLocalFile,
+                    onOpenFile = { file, localFile -> openFile(context, localFile, file.mimeType).getOrThrow() }
+                )
+            }
+        }
+        composable(AppRoutes.Files) {
+            val filesViewModel = remember(secureState.unlocked) {
+                FilesViewModel(null, false, appContainer.channelsRepository, appContainer.filesRepository)
+            }
+            val state by filesViewModel.state.collectAsState()
+            val context = LocalContext.current
+            Shell(MainSection.Files, navigateMessages, navigateGallery, navigateFiles) {
+                FilesExplorerScreen(
+                    state = state,
+                    allChannels = allChannels,
+                    onOpenSettings = openSettings,
+                    onBack = null,
+                    onOpenFolder = { navController.navigate(AppRoutes.folderFiles(it)) },
+                    onQueryChange = filesViewModel::onQueryChange,
                     onEnsureLocalFile = filesViewModel::ensureLocalFile,
                     onOpenFile = { file, localFile -> openFile(context, localFile, file.mimeType).getOrThrow() }
                 )
@@ -252,41 +294,33 @@ private fun AuthenticatedNavHost(
             arguments = listOf(navArgument("folderId") { type = NavType.StringType })
         ) { backStackEntry ->
             val folderId = backStackEntry.arguments?.getString("folderId").orEmpty()
-            val filesViewModel = remember(folderId) {
+            val filesViewModel = remember(folderId, secureState.unlocked) {
                 FilesViewModel(folderId, false, appContainer.channelsRepository, appContainer.filesRepository)
             }
             val state by filesViewModel.state.collectAsState()
             val context = LocalContext.current
-            Shell(navController, MainSection.Files, folderId, channels, secureChannels, secureState.unlocked, createChannel, onLogout, syncRuntimeState) { openDrawer ->
-                FilesScreen(
+            Shell(MainSection.Files, navigateMessages, navigateGallery, navigateFiles, showBottomNav = false) {
+                FilesExplorerScreen(
                     state = state,
-                    openDrawer = openDrawer,
+                    allChannels = allChannels,
+                    onOpenSettings = openSettings,
+                    onBack = { navController.popBackStack() },
+                    onOpenFolder = { navController.navigate(AppRoutes.folderFiles(it)) },
                     onQueryChange = filesViewModel::onQueryChange,
-                    onModeChange = filesViewModel::onModeChange,
-                    onFavoritesToggle = filesViewModel::onFavoritesToggle,
-                    onKindChange = filesViewModel::onKindChange,
                     onEnsureLocalFile = filesViewModel::ensureLocalFile,
                     onOpenFile = { file, localFile -> openFile(context, localFile, file.mimeType).getOrThrow() }
                 )
             }
         }
-        composable(AppRoutes.Favorites) {
-            val filesViewModel = remember {
-                FilesViewModel(null, true, appContainer.channelsRepository, appContainer.filesRepository)
-            }
-            val state by filesViewModel.state.collectAsState()
-            val context = LocalContext.current
-            Shell(navController, MainSection.Favorites, null, channels, secureChannels, secureState.unlocked, createChannel, onLogout, syncRuntimeState) { openDrawer ->
-                FilesScreen(
-                    state = state,
-                    openDrawer = openDrawer,
-                    onQueryChange = filesViewModel::onQueryChange,
-                    onModeChange = filesViewModel::onModeChange,
-                    onFavoritesToggle = filesViewModel::onFavoritesToggle,
-                    onKindChange = filesViewModel::onKindChange,
-                    onEnsureLocalFile = filesViewModel::ensureLocalFile,
-                    onOpenFile = { file, localFile -> openFile(context, localFile, file.mimeType).getOrThrow() },
-                    favoritesOnlyInitial = true
+        composable(AppRoutes.Settings) {
+            Shell(MainSection.Settings, navigateMessages, navigateGallery, navigateFiles, showBottomNav = false) {
+                SettingsScreen(
+                    secureUnlocked = secureState.unlocked,
+                    onBack = { navController.popBackStack() },
+                    onCreateChannel = createChannel,
+                    onNavigateKey = { navController.navigate(AppRoutes.Key) },
+                    onNavigateSecureFolders = { navController.navigate(AppRoutes.SecureFolders) },
+                    onLogout = onLogout
                 )
             }
         }
@@ -299,10 +333,10 @@ private fun AuthenticatedNavHost(
                 SearchViewModel(initialQuery, appContainer.messagesRepository)
             }
             val state by searchViewModel.state.collectAsState()
-            Shell(navController, MainSection.Search, null, channels, secureChannels, secureState.unlocked, createChannel, onLogout, syncRuntimeState) { openDrawer ->
+            Shell(MainSection.Search, navigateMessages, navigateGallery, navigateFiles, showBottomNav = false) {
                 SearchScreen(
                     state = state,
-                    openDrawer = openDrawer,
+                    onBack = { navController.popBackStack() },
                     onQueryChange = searchViewModel::onQueryChange,
                     onThreadClick = { navController.navigate(AppRoutes.thread(it)) }
                 )
@@ -311,10 +345,10 @@ private fun AuthenticatedNavHost(
         composable(AppRoutes.Key) {
             val keyViewModel = remember { KeyViewModel(appContainer.cryptoRepository) }
             val state by keyViewModel.state.collectAsState()
-            Shell(navController, MainSection.Key, null, channels, secureChannels, secureState.unlocked, createChannel, onLogout, syncRuntimeState) { openDrawer ->
+            Shell(MainSection.Key, navigateMessages, navigateGallery, navigateFiles, showBottomNav = false) {
                 KeyScreen(
                     state = state,
-                    openDrawer = openDrawer,
+                    onBack = { navController.popBackStack() },
                     onValueChange = keyViewModel::onValueChange,
                     onSave = keyViewModel::save,
                     onGenerate = keyViewModel::generate,
@@ -325,14 +359,14 @@ private fun AuthenticatedNavHost(
         composable(AppRoutes.SecureFolders) {
             val secureViewModel = remember { SecureFoldersViewModel(appContainer.secureFoldersRepository) }
             val state by secureViewModel.state.collectAsState()
-            Shell(navController, MainSection.Files, null, channels, secureChannels, secureState.unlocked, createChannel, onLogout, syncRuntimeState) { openDrawer ->
+            Shell(MainSection.SecureFolders, navigateMessages, navigateGallery, navigateFiles, showBottomNav = false) {
                 SecureFoldersScreen(
                     state = state,
-                    openDrawer = openDrawer,
+                    onBack = { navController.popBackStack() },
                     onPinChange = secureViewModel::onPinChange,
-                    onSetup = { secureViewModel.setup { navController.navigateHomeFromSecureFolders() } },
-                    onUnlock = { secureViewModel.unlock { navController.navigateHomeFromSecureFolders() } },
-                    onReset = { secureViewModel.reset { navController.navigateHomeFromSecureFolders() } },
+                    onSetup = { secureViewModel.setup { navController.popBackStack() } },
+                    onUnlock = { secureViewModel.unlock { navController.popBackStack() } },
+                    onReset = { secureViewModel.reset { navController.popBackStack() } },
                     onLock = secureViewModel::lock
                 )
             }
@@ -356,44 +390,21 @@ private fun AuthenticatedNavHost(
     }
 }
 
-private fun NavHostController.navigateHomeFromSecureFolders() {
-    navigate(AppRoutes.Messages) {
-        popUpTo(AppRoutes.SecureFolders) {
-            inclusive = true
-        }
-    }
-}
-
 @Composable
 private fun Shell(
-    navController: NavHostController,
     section: MainSection,
-    activeFolderId: String?,
-    channels: List<com.archieapps.fles.ui.model.Channel>,
-    secureChannels: List<com.archieapps.fles.ui.model.Channel>,
-    secureUnlocked: Boolean,
-    onCreateChannel: (String, String, String, Boolean) -> Unit,
-    onLogout: () -> Unit,
-    syncRuntimeState: com.archieapps.fles.sync.SyncRuntimeState,
-    content: @Composable (openDrawer: () -> Unit) -> Unit
+    onNavigateMessages: () -> Unit,
+    onNavigateGallery: () -> Unit,
+    onNavigateFiles: () -> Unit,
+    showBottomNav: Boolean = true,
+    content: @Composable () -> Unit
 ) {
     AppShell(
         section = section,
-        activeFolderId = activeFolderId,
-        channels = channels,
-        secureChannels = secureChannels,
-        secureUnlocked = secureUnlocked,
-        onNavigateMessages = { navController.navigate(AppRoutes.Messages) },
-        onNavigateThread = { navController.navigate(AppRoutes.thread(it)) },
-        onNavigateFiles = { navController.navigate(AppRoutes.Files) },
-        onNavigateFolderFiles = { navController.navigate(AppRoutes.folderFiles(it)) },
-        onNavigateFavorites = { navController.navigate(AppRoutes.Favorites) },
-        onNavigateKey = { navController.navigate(AppRoutes.Key) },
-        onNavigateSecureFolders = { navController.navigate(AppRoutes.SecureFolders) },
-        onNavigateSearch = { navController.navigate(AppRoutes.search(it)) },
-        onCreateChannel = onCreateChannel,
-        onLogout = onLogout,
-        syncState = syncRuntimeState,
+        onNavigateMessages = onNavigateMessages,
+        onNavigateGallery = onNavigateGallery,
+        onNavigateFiles = onNavigateFiles,
+        showBottomNav = showBottomNav,
         content = content
     )
 }

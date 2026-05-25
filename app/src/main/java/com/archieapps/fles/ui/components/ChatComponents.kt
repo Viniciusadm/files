@@ -62,6 +62,7 @@ import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Inbox
 import androidx.compose.material.icons.filled.Menu
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.PhotoLibrary
 import androidx.compose.material.icons.filled.PlayArrow
@@ -160,13 +161,13 @@ fun ChatHeader(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        IconButtonBox(Icons.Filled.Menu, onClick = onMenuClick)
         if (onBack != null) IconButtonBox(Icons.AutoMirrored.Filled.KeyboardArrowLeft, onClick = onBack, iconSize = 22.dp)
         FolderAvatar(channel.name, channel.color, size = 32.dp, icon = folderIcon(channel.icon))
         Column(modifier = Modifier.weight(1f)) {
             Text(channel.name, color = colors.foreground, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
             Text("$itemCount ${if (itemCount == 1) "item" else "itens"}", color = colors.mutedForeground, fontSize = 12.sp, maxLines = 1)
         }
+        IconButtonBox(Icons.Filled.Settings, onClick = onMenuClick)
         Box {
             IconButtonBox(Icons.Filled.MoreVert, onClick = { menuOpen = true })
             DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {

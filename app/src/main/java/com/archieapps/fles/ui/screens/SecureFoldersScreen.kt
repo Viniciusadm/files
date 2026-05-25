@@ -16,7 +16,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Backspace
 import androidx.compose.material.icons.filled.Lock
-import androidx.compose.material.icons.filled.Menu
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Surface
@@ -38,7 +38,7 @@ import com.archieapps.fles.ui.viewmodel.SecureFoldersUiState
 @Composable
 fun SecureFoldersScreen(
     state: SecureFoldersUiState,
-    openDrawer: () -> Unit,
+    onBack: () -> Unit,
     onPinChange: (String) -> Unit,
     onSetup: () -> Unit,
     onUnlock: () -> Unit,
@@ -54,7 +54,7 @@ fun SecureFoldersScreen(
             modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            IconButtonBox(Icons.Filled.Menu, onClick = openDrawer)
+            IconButtonBox(Icons.AutoMirrored.Filled.KeyboardArrowLeft, onClick = onBack, iconSize = 22.dp)
             Text(
                 "Pastas Seguras",
                 color = colors.foreground,

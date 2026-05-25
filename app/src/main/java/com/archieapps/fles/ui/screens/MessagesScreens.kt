@@ -5,6 +5,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.navigationBarsPadding
@@ -17,8 +18,8 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ErrorOutline
-import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.Message
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
@@ -39,6 +40,7 @@ import com.archieapps.fles.ui.components.EmptyState
 import com.archieapps.fles.ui.components.FolderListItem
 import com.archieapps.fles.ui.components.IconButtonBox
 import com.archieapps.fles.ui.components.MessageList
+import com.archieapps.fles.ui.components.SharedSearchBar
 import com.archieapps.fles.ui.components.flattenChannelTree
 import com.archieapps.fles.ui.model.Channel
 import com.archieapps.fles.ui.model.Attachment
@@ -51,8 +53,14 @@ import com.archieapps.fles.ui.viewmodel.ThreadActionState
 import java.io.File
 
 @Composable
-fun MessagesScreen(state: UiState<List<Channel>>, openDrawer: () -> Unit, onThreadClick: (String) -> Unit) {
+fun MessagesScreen(
+    state: UiState<List<Channel>>,
+    onOpenSettings: () -> Unit,
+    onThreadClick: (String) -> Unit,
+    onNavigateSearch: (String) -> Unit
+) {
     val colors = FlesTheme.colors
+    var query by remember { mutableStateOf("") }
     Column(modifier = Modifier.fillMaxSize().background(colors.background)) {
         Row(
             modifier = Modifier
@@ -61,12 +69,24 @@ fun MessagesScreen(state: UiState<List<Channel>>, openDrawer: () -> Unit, onThre
                 .padding(horizontal = 12.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            IconButtonBox(Icons.Filled.Menu, onClick = openDrawer)
-            Row(modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+            Row(
+                modifier = Modifier.weight(1f).padding(horizontal = 8.dp, vertical = 6.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
                 Icon(Icons.Filled.Message, null, tint = colors.mutedForeground)
                 Spacer(Modifier.width(6.dp))
                 Text("Conversas", color = colors.mutedForeground, fontSize = 14.sp, fontWeight = FontWeight.Medium)
             }
+            IconButtonBox(Icons.Filled.Settings, onClick = onOpenSettings)
+        }
+        Box(modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp)) {
+            SharedSearchBar(
+                query = query,
+                onQueryChange = {
+                    query = it
+                    if (it.trim().length >= 2) onNavigateSearch(it.trim())
+                }
+            )
         }
         when (state) {
             UiState.Loading -> Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -74,7 +94,12 @@ fun MessagesScreen(state: UiState<List<Channel>>, openDrawer: () -> Unit, onThre
             }
             UiState.Empty -> EmptyState(title = "Sem conversas", description = null, icon = Icons.Filled.Message, modifier = Modifier.fillMaxSize())
             is UiState.Error -> EmptyState(title = "Erro ao carregar", description = state.message, icon = Icons.Filled.ErrorOutline, modifier = Modifier.fillMaxSize())
-            is UiState.Success -> LazyColumn(modifier = Modifier.fillMaxSize().padding(horizontal = 8.dp, vertical = 8.dp)) {
+            is UiState.Success -> LazyColumn(
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 8.dp).let {
+                    PaddingValues(start = 8.dp, end = 8.dp, top = 8.dp, bottom = 96.dp)
+                }
+            ) {
                 items(flattenChannelTree(state.data), key = { it.channel.id }) {
                     FolderListItem(channel = it.channel, active = false, depth = it.depth, onClick = { onThreadClick(it.channel.id) })
                 }
@@ -90,7 +115,7 @@ fun ThreadScreen(
     channels: List<Channel>,
     attachmentIo: AttachmentIo,
     keyConfigured: Boolean,
-    openDrawer: () -> Unit,
+    onOpenSettings: () -> Unit,
     onBack: () -> Unit,
     onDeleteThread: () -> Unit,
     onCreateSubfolder: (String, String, String, Boolean) -> Unit,
@@ -122,7 +147,7 @@ fun ThreadScreen(
                     ChatHeader(
                         channel = state.data.channel,
                         itemCount = state.data.messages.size,
-                        onMenuClick = openDrawer,
+                        onMenuClick = onOpenSettings,
                         onBack = onBack,
                         onCreateSubfolderClick = { createSubfolderOpen = true },
                         onDeleteClick = onDeleteThread
@@ -184,7 +209,7 @@ fun ThreadScreen(
 fun EmptyThreadScreen() {
     EmptyState(
         title = "Selecione uma conversa",
-        description = "Escolha uma pasta na barra lateral para abrir.",
+        description = "Escolha uma pasta para abrir.",
         icon = Icons.Filled.Message,
         modifier = Modifier.fillMaxSize()
     )

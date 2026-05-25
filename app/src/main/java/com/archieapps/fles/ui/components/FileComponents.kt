@@ -145,40 +145,12 @@ fun FilesToolbar(
             .padding(12.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        AppInput(
-            value = query,
-            onValueChange = onQueryChange,
-            placeholder = "Buscar arquivos por nome, tipo ou pasta...",
-            leadingIcon = Icons.Filled.Search,
-            modifier = Modifier.fillMaxWidth()
+        SharedSearchBar(
+            query = query,
+            onQueryChange = onQueryChange,
+            placeholder = "Buscar arquivos por nome, tipo ou pasta..."
         )
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            AppButton("Ordenar", onClick = {}, variant = AppButtonVariant.Outline, leadingIcon = Icons.Filled.Sort)
-            Row(
-                modifier = Modifier
-                    .border(1.dp, colors.border, RoundedCornerShape(FlesTheme.radius.lg))
-                    .padding(2.dp)
-            ) {
-                IconButtonBox(
-                    icon = Icons.Filled.GridView,
-                    onClick = { onModeChange(FilesViewMode.Grid) },
-                    background = if (mode == FilesViewMode.Grid) colors.secondary else Color.Transparent,
-                    size = 32.dp,
-                    iconSize = 16.dp
-                )
-                IconButtonBox(
-                    icon = Icons.Filled.ViewList,
-                    onClick = { onModeChange(FilesViewMode.List) },
-                    background = if (mode == FilesViewMode.List) colors.secondary else Color.Transparent,
-                    size = 32.dp,
-                    iconSize = 16.dp
-                )
-            }
-        }
+        FilesViewControls(mode = mode, onModeChange = onModeChange, onSortClick = {})
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -201,6 +173,43 @@ fun FilesToolbar(
                 val label = kind?.let { kindStyle(it).label + if (it == FileKind.Archive || it == FileKind.Video) "s" else "" } ?: "Todos"
                 Badge(label, active = activeKind == kind, modifier = Modifier.clickable { onKindChange(kind) })
             }
+        }
+    }
+}
+
+@Composable
+fun FilesViewControls(
+    mode: FilesViewMode,
+    onModeChange: (FilesViewMode) -> Unit,
+    onSortClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val colors = FlesTheme.colors
+    Row(
+        modifier = modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        AppButton("Ordenar", onClick = onSortClick, variant = AppButtonVariant.Outline, leadingIcon = Icons.Filled.Sort)
+        Row(
+            modifier = Modifier
+                .border(1.dp, colors.border, RoundedCornerShape(FlesTheme.radius.lg))
+                .padding(2.dp)
+        ) {
+            IconButtonBox(
+                icon = Icons.Filled.GridView,
+                onClick = { onModeChange(FilesViewMode.Grid) },
+                background = if (mode == FilesViewMode.Grid) colors.secondary else Color.Transparent,
+                size = 32.dp,
+                iconSize = 16.dp
+            )
+            IconButtonBox(
+                icon = Icons.Filled.ViewList,
+                onClick = { onModeChange(FilesViewMode.List) },
+                background = if (mode == FilesViewMode.List) colors.secondary else Color.Transparent,
+                size = 32.dp,
+                iconSize = 16.dp
+            )
         }
     }
 }
@@ -335,6 +344,7 @@ fun FileListRow(file: FileItem, modifier: Modifier = Modifier, onClick: () -> Un
         file.localPath?.removePrefix("file://")?.let { File(it).takeIf { f -> f.exists() }?.absolutePath }
     } else null
     val videoMeta = if (file.kind == FileKind.Video) rememberVideoMeta(videoLocalPath) else null
+    val imageThumb = if (file.kind == FileKind.Image) rememberGridPreviewBitmap(file) else null
     Row(
         modifier = modifier
             .fillMaxWidth()
@@ -343,16 +353,16 @@ fun FileListRow(file: FileItem, modifier: Modifier = Modifier, onClick: () -> Un
             .padding(horizontal = 12.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        val thumb = videoMeta?.thumbnail
-        if (thumb != null) {
-            Box(
+        val videoThumb = videoMeta?.thumbnail
+        when {
+            videoThumb != null -> Box(
                 modifier = Modifier
                     .size(40.dp)
                     .clip(RoundedCornerShape(FlesTheme.radius.md))
                     .background(Color.Black),
                 contentAlignment = Alignment.Center
             ) {
-                Image(bitmap = thumb, contentDescription = file.name, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
+                Image(bitmap = videoThumb, contentDescription = file.name, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
                 Box(
                     modifier = Modifier
                         .size(20.dp)
@@ -363,8 +373,15 @@ fun FileListRow(file: FileItem, modifier: Modifier = Modifier, onClick: () -> Un
                     Icon(Icons.Filled.PlayArrow, null, modifier = Modifier.size(14.dp), tint = Color.White)
                 }
             }
-        } else {
-            FileIconBadge(file.kind)
+            imageThumb != null -> Box(
+                modifier = Modifier
+                    .size(40.dp)
+                    .clip(RoundedCornerShape(FlesTheme.radius.md))
+                    .background(colors.muted)
+            ) {
+                Image(bitmap = imageThumb, contentDescription = file.name, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
+            }
+            else -> FileIconBadge(file.kind)
         }
         Spacer(Modifier.width(12.dp))
         Column(modifier = Modifier.weight(1f)) {

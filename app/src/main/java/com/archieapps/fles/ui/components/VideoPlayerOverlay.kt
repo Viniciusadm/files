@@ -69,6 +69,32 @@ fun VideoPlayerOverlay(
     uri: String,
     onClose: () -> Unit
 ) {
+    var controlsVisible by remember { mutableStateOf(true) }
+    Dialog(onDismissRequest = onClose, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+        Box(modifier = Modifier.fillMaxSize().background(Color.Black)) {
+            VideoPlayerContent(
+                title = title,
+                uri = uri,
+                showTitleBar = true,
+                controlsVisible = controlsVisible,
+                onToggleControls = { controlsVisible = !controlsVisible },
+                onControlsAutoHide = { controlsVisible = false },
+                onClose = onClose
+            )
+        }
+    }
+}
+
+@Composable
+fun VideoPlayerContent(
+    title: String,
+    uri: String,
+    showTitleBar: Boolean,
+    controlsVisible: Boolean,
+    onToggleControls: () -> Unit,
+    onControlsAutoHide: () -> Unit,
+    onClose: () -> Unit
+) {
     val context = LocalContext.current
     val view = LocalView.current
 
@@ -76,7 +102,7 @@ fun VideoPlayerOverlay(
         ExoPlayer.Builder(context).build().apply {
             setMediaItem(MediaItem.fromUri(uri))
             prepare()
-            playWhenReady = true
+            playWhenReady = false
         }
     }
 
@@ -85,7 +111,6 @@ fun VideoPlayerOverlay(
     var durationMs by remember { mutableLongStateOf(0L) }
     var positionMs by remember { mutableLongStateOf(0L) }
     var speedIndex by remember { mutableStateOf(0) }
-    var controlsVisible by remember { mutableStateOf(true) }
     var scrubbing by remember { mutableStateOf(false) }
     var scrubPositionMs by remember { mutableLongStateOf(0L) }
 
@@ -125,43 +150,43 @@ fun VideoPlayerOverlay(
     LaunchedEffect(controlsVisible, isPlaying, scrubbing) {
         if (controlsVisible && isPlaying && !scrubbing) {
             delay(3500)
-            controlsVisible = false
+            onControlsAutoHide()
         }
     }
 
-    Dialog(onDismissRequest = onClose, properties = DialogProperties(usePlatformDefaultWidth = false)) {
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(Color.Black)
-                .pointerInput(Unit) {
-                    detectTapGestures(onTap = { controlsVisible = !controlsVisible })
-                }
-        ) {
-            AndroidView(
-                modifier = Modifier.fillMaxSize(),
-                factory = { ctx ->
-                    PlayerView(ctx).apply {
-                        useController = false
-                        resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
-                        layoutParams = ViewGroup.LayoutParams(
-                            ViewGroup.LayoutParams.MATCH_PARENT,
-                            ViewGroup.LayoutParams.MATCH_PARENT
-                        )
-                        this.player = player
-                    }
-                }
-            )
-
-            if (isBuffering) {
-                CircularProgressIndicator(
-                    modifier = Modifier.size(48.dp).align(Alignment.Center),
-                    color = Color.White,
-                    strokeWidth = 3.dp
-                )
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color.Black)
+            .pointerInput(Unit) {
+                detectTapGestures(onTap = { onToggleControls() })
             }
+    ) {
+        AndroidView(
+            modifier = Modifier.fillMaxSize(),
+            factory = { ctx ->
+                PlayerView(ctx).apply {
+                    useController = false
+                    resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
+                    layoutParams = ViewGroup.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT,
+                        ViewGroup.LayoutParams.MATCH_PARENT
+                    )
+                    this.player = player
+                }
+            }
+        )
 
-            if (controlsVisible) {
+        if (isBuffering) {
+            CircularProgressIndicator(
+                modifier = Modifier.size(48.dp).align(Alignment.Center),
+                color = Color.White,
+                strokeWidth = 3.dp
+            )
+        }
+
+        if (controlsVisible) {
+            if (showTitleBar) {
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -185,82 +210,82 @@ fun VideoPlayerOverlay(
                         Icon(Icons.Filled.Close, null, tint = Color.White, modifier = Modifier.size(22.dp))
                     }
                 }
+            }
 
-                Box(
-                    modifier = Modifier
-                        .align(Alignment.Center)
-                        .size(72.dp)
-                        .clip(CircleShape)
-                        .background(Color.Black.withAlpha(0.45f))
-                        .pointerInput(player) {
-                            detectTapGestures(onTap = {
-                                if (player.playbackState == Player.STATE_ENDED) {
-                                    player.seekTo(0)
-                                    player.play()
-                                } else if (player.isPlaying) player.pause() else player.play()
-                            })
-                        },
-                    contentAlignment = Alignment.Center
+            Box(
+                modifier = Modifier
+                    .align(Alignment.Center)
+                    .size(72.dp)
+                    .clip(CircleShape)
+                    .background(Color.Black.withAlpha(0.45f))
+                    .pointerInput(player) {
+                        detectTapGestures(onTap = {
+                            if (player.playbackState == Player.STATE_ENDED) {
+                                player.seekTo(0)
+                                player.play()
+                            } else if (player.isPlaying) player.pause() else player.play()
+                        })
+                    },
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = if (isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
+                    contentDescription = null,
+                    tint = Color.White,
+                    modifier = Modifier.size(40.dp)
+                )
+            }
+
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .align(Alignment.BottomCenter)
+                    .background(Color.Black.withAlpha(0.45f))
+                    .navigationBarsPadding()
+                    .padding(horizontal = 16.dp, vertical = 10.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                SeekBar(
+                    positionMs = if (scrubbing) scrubPositionMs else positionMs,
+                    durationMs = durationMs,
+                    onScrubStart = {
+                        scrubbing = true
+                        scrubPositionMs = positionMs
+                        player.pause()
+                    },
+                    onScrubChange = { newPos -> scrubPositionMs = newPos },
+                    onScrubEnd = { finalPos ->
+                        player.seekTo(finalPos)
+                        positionMs = finalPos
+                        scrubbing = false
+                        player.play()
+                    }
+                )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Icon(
-                        imageVector = if (isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
-                        contentDescription = null,
-                        tint = Color.White,
-                        modifier = Modifier.size(40.dp)
+                    Text(
+                        formatVideoDuration(if (scrubbing) scrubPositionMs else positionMs),
+                        color = Color.White,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Medium
                     )
-                }
-
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .align(Alignment.BottomCenter)
-                        .background(Color.Black.withAlpha(0.45f))
-                        .navigationBarsPadding()
-                        .padding(horizontal = 16.dp, vertical = 10.dp),
-                    verticalArrangement = Arrangement.spacedBy(6.dp)
-                ) {
-                    SeekBar(
-                        positionMs = if (scrubbing) scrubPositionMs else positionMs,
-                        durationMs = durationMs,
-                        onScrubStart = {
-                            scrubbing = true
-                            scrubPositionMs = positionMs
-                            player.pause()
-                        },
-                        onScrubChange = { newPos -> scrubPositionMs = newPos },
-                        onScrubEnd = { finalPos ->
-                            player.seekTo(finalPos)
-                            positionMs = finalPos
-                            scrubbing = false
-                            player.play()
+                    Spacer(Modifier.weight(1f))
+                    SpeedChip(
+                        speed = SPEED_STEPS[speedIndex],
+                        onClick = {
+                            speedIndex = (speedIndex + 1) % SPEED_STEPS.size
+                            player.playbackParameters = PlaybackParameters(SPEED_STEPS[speedIndex])
                         }
                     )
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            formatVideoDuration(if (scrubbing) scrubPositionMs else positionMs),
-                            color = Color.White,
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.Medium
-                        )
-                        Spacer(Modifier.weight(1f))
-                        SpeedChip(
-                            speed = SPEED_STEPS[speedIndex],
-                            onClick = {
-                                speedIndex = (speedIndex + 1) % SPEED_STEPS.size
-                                player.playbackParameters = PlaybackParameters(SPEED_STEPS[speedIndex])
-                            }
-                        )
-                        Spacer(Modifier.width(12.dp))
-                        Text(
-                            formatVideoDuration(durationMs),
-                            color = Color.White,
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.Medium
-                        )
-                    }
+                    Spacer(Modifier.width(12.dp))
+                    Text(
+                        formatVideoDuration(durationMs),
+                        color = Color.White,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Medium
+                    )
                 }
             }
         }
@@ -268,7 +293,7 @@ fun VideoPlayerOverlay(
 }
 
 @Composable
-private fun PlayerControlButton(onClick: () -> Unit, content: @Composable () -> Unit) {
+internal fun PlayerControlButton(onClick: () -> Unit, content: @Composable () -> Unit) {
     Box(
         modifier = Modifier
             .size(40.dp)
