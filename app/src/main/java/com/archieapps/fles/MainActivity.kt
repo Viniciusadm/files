@@ -15,6 +15,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -230,6 +231,7 @@ private fun AuthenticatedNavHost(
         }
     }
     val allChannels = channels + secureChannels
+    val messagesExpandedMap = remember { mutableStateMapOf<String, Boolean>() }
     val createChannel: (String, String, String, Boolean) -> Unit = { name, icon, color, isSecure -> messagesViewModel.createChannel(name, icon, color, isSecure) }
     val createSubfolder: (String, String, String, Boolean, String) -> Unit = { name, icon, color, isSecure, parentLocalId ->
         messagesViewModel.createChannel(name, icon, color, isSecure, parentLocalId)
@@ -267,6 +269,7 @@ private fun AuthenticatedNavHost(
             Shell(MainSection.Messages, navigateMessages, navigateGallery, navigateFiles) {
                 MessagesScreen(
                     state = homeChannelsState,
+                    expandedMap = messagesExpandedMap,
                     onOpenSettings = openSettings,
                     onThreadClick = { navController.navigate(AppRoutes.thread(it)) },
                     onNavigateSearch = { navController.navigate(AppRoutes.search(it)) }

@@ -24,11 +24,11 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.foundation.lazy.LazyListScope
+import androidx.compose.runtime.snapshots.SnapshotStateMap
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
@@ -57,13 +57,13 @@ import java.io.File
 @Composable
 fun MessagesScreen(
     state: UiState<List<Channel>>,
+    expandedMap: SnapshotStateMap<String, Boolean>,
     onOpenSettings: () -> Unit,
     onThreadClick: (String) -> Unit,
     onNavigateSearch: (String) -> Unit
 ) {
     val colors = FlesTheme.colors
     var query by remember { mutableStateOf("") }
-    val expandedMap = remember { mutableStateMapOf<String, Boolean>() }
     Column(modifier = Modifier.fillMaxSize().background(colors.background)) {
         Row(
             modifier = Modifier
@@ -212,7 +212,7 @@ fun ThreadScreen(
 private fun LazyListScope.renderChannelNodes(
     nodes: List<ChannelTreeNode>,
     depth: Int,
-    expandedMap: androidx.compose.runtime.snapshots.SnapshotStateMap<String, Boolean>,
+    expandedMap: SnapshotStateMap<String, Boolean>,
     onThreadClick: (String) -> Unit
 ) {
     nodes.forEach { node ->
