@@ -19,6 +19,11 @@ val apiBaseUrl = localProperties.getProperty(apiBaseUrlPropertyName)
     ?: fallbackApiBaseUrl
 val buildConfigApiBaseUrl = "\"${apiBaseUrl.replace("\\", "\\\\").replace("\"", "\\\"")}\""
 
+val releaseStoreFile = localProperties.getProperty("RELEASE_STORE_FILE")
+val releaseStorePassword = localProperties.getProperty("RELEASE_STORE_PASSWORD")
+val releaseKeyAlias = localProperties.getProperty("RELEASE_KEY_ALIAS")
+val releaseKeyPassword = localProperties.getProperty("RELEASE_KEY_PASSWORD")
+
 android {
     namespace = "com.archieapps.fles"
     compileSdk {
@@ -37,6 +42,17 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
+    signingConfigs {
+        if (releaseStoreFile != null && file(releaseStoreFile).exists()) {
+            create("release") {
+                storeFile = file(releaseStoreFile)
+                storePassword = releaseStorePassword
+                keyAlias = releaseKeyAlias
+                keyPassword = releaseKeyPassword
+            }
+        }
+    }
+
     buildTypes {
         debug {
             buildConfigField("String", apiBaseUrlPropertyName, buildConfigApiBaseUrl)
@@ -49,6 +65,7 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
+            signingConfigs.findByName("release")?.let { signingConfig = it }
         }
     }
     compileOptions {
