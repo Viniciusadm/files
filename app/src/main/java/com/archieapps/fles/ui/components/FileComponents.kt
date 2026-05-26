@@ -6,7 +6,6 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -137,7 +136,10 @@ fun FilesToolbar(
     favoritesOnly: Boolean,
     onFavoritesToggle: () -> Unit,
     activeKind: FileKind?,
-    onKindChange: (FileKind?) -> Unit
+    onKindChange: (FileKind?) -> Unit,
+    galleryGroupMode: GalleryGroupMode,
+    onGroupModeChange: (GalleryGroupMode) -> Unit,
+    showGroupToggle: Boolean,
 ) {
     val colors = FlesTheme.colors
     Column(
@@ -155,26 +157,36 @@ fun FilesToolbar(
         )
         FilesViewControls(mode = mode, onModeChange = onModeChange, onSortClick = {})
         Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .horizontalScroll(rememberScrollState()),
-            horizontalArrangement = Arrangement.spacedBy(6.dp)
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
         ) {
-            Surface(
-                shape = RoundedCornerShape(FlesTheme.radius.full),
-                color = if (favoritesOnly) Color(0xFFEAB308).withAlpha(0.1f) else Color.Transparent,
-                border = BorderStroke(1.dp, if (favoritesOnly) Color(0x66EAB308) else colors.border),
-                modifier = Modifier.clickable(onClick = onFavoritesToggle)
-            ) {
-                Row(modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Filled.Star, null, modifier = Modifier.size(12.dp), tint = if (favoritesOnly) Color(0xFFA16207) else colors.mutedForeground)
-                    Spacer(Modifier.width(6.dp))
-                    Text("Favoritos", color = if (favoritesOnly) Color(0xFFA16207) else colors.mutedForeground, fontSize = 12.sp, fontWeight = FontWeight.Medium)
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                Surface(
+                    shape = RoundedCornerShape(FlesTheme.radius.full),
+                    color = if (favoritesOnly) Color(0xFFEAB308).withAlpha(0.1f) else Color.Transparent,
+                    border = BorderStroke(1.dp, if (favoritesOnly) Color(0x66EAB308) else colors.border),
+                    modifier = Modifier.clickable(onClick = onFavoritesToggle)
+                ) {
+                    Row(modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Filled.Star, null, modifier = Modifier.size(12.dp), tint = if (favoritesOnly) Color(0xFFA16207) else colors.mutedForeground)
+                        Spacer(Modifier.width(6.dp))
+                        Text("Favoritos", color = if (favoritesOnly) Color(0xFFA16207) else colors.mutedForeground, fontSize = 12.sp, fontWeight = FontWeight.Medium)
+                    }
+                }
+                listOf(FileKind.Image, FileKind.Video).forEach { kind ->
+                    val label = kindStyle(kind).label + "s"
+                    Badge(
+                        label,
+                        active = activeKind == kind,
+                        modifier = Modifier.clickable {
+                            onKindChange(if (activeKind == kind) null else kind)
+                        }
+                    )
                 }
             }
-            listOf(null, FileKind.Image, FileKind.Video, FileKind.Document, FileKind.Pdf, FileKind.Archive, FileKind.Link).forEach { kind ->
-                val label = kind?.let { kindStyle(it).label + if (it == FileKind.Archive || it == FileKind.Video) "s" else "" } ?: "Todos"
-                Badge(label, active = activeKind == kind, modifier = Modifier.clickable { onKindChange(kind) })
+            if (showGroupToggle) {
+                GalleryModeToggle(mode = galleryGroupMode, onChange = onGroupModeChange)
             }
         }
     }
@@ -782,7 +794,7 @@ private fun FilePreviewPanel(
             }
             else -> Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 FileIconBadge(file.kind, large = true)
-                Text("Preview não disponível para este tipo de arquivo.", color = colors.mutedForeground, fontSize = 13.sp)
+                Text("Preview não disponível.", color = colors.mutedForeground, fontSize = 13.sp, textAlign = TextAlign.Center)
             }
         }
     }

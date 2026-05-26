@@ -45,7 +45,6 @@ import com.archieapps.fles.ui.components.FilesToolbar
 import com.archieapps.fles.ui.components.FilesViewMode
 import com.archieapps.fles.ui.components.GalleryFolderCard
 import com.archieapps.fles.ui.components.GalleryFolderGroup
-import com.archieapps.fles.ui.components.GalleryModeToggle
 import com.archieapps.fles.ui.components.IconButtonBox
 import com.archieapps.fles.ui.components.MediaPagerOverlay
 import com.archieapps.fles.ui.model.FileItem
@@ -91,8 +90,9 @@ fun GalleryScreen(
         folderGroups.firstOrNull { it.folderId == selectedFolderId }?.folderName
     }
     val drillInFiles = remember(state.files, selectedFolderId) {
-        if (selectedFolderId == null) state.files
-        else state.files.filter { it.folderId == selectedFolderId }
+        val media = state.files.filter { it.kind == FileKind.Image || it.kind == FileKind.Video }
+        if (selectedFolderId == null) media
+        else media.filter { it.folderId == selectedFolderId }
     }
 
     BackHandler(enabled = selectedFolderId != null) { onSelectGalleryFolder(null) }
@@ -112,18 +112,11 @@ fun GalleryScreen(
             favoritesOnly = state.favoritesOnly,
             onFavoritesToggle = onFavoritesToggle,
             activeKind = state.activeKind,
-            onKindChange = onKindChange
+            onKindChange = onKindChange,
+            galleryGroupMode = state.galleryGroupMode,
+            onGroupModeChange = onGroupModeChange,
+            showGroupToggle = selectedFolderId == null,
         )
-        if (selectedFolderId == null) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 12.dp, vertical = 8.dp),
-                horizontalArrangement = Arrangement.End
-            ) {
-                GalleryModeToggle(mode = state.galleryGroupMode, onChange = onGroupModeChange)
-            }
-        }
 
         val showingFolders = selectedFolderId == null && state.galleryGroupMode == GalleryGroupMode.Folders
 
