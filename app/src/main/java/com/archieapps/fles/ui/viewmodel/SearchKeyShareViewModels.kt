@@ -60,7 +60,7 @@ class KeyViewModel(private val cryptoRepository: CryptoRepository) : ViewModel()
         _state.update { it.copy(value = value, error = null) }
     }
 
-    fun save() {
+    fun save(onSaved: () -> Unit = {}) {
         viewModelScope.launch {
             _state.update { it.copy(loading = true, error = null) }
             runCatching { cryptoRepository.saveKey(_state.value.value) }
@@ -74,6 +74,7 @@ class KeyViewModel(private val cryptoRepository: CryptoRepository) : ViewModel()
                             error = null
                         )
                     }
+                    onSaved()
                 }
                 .onFailure { error ->
                     _state.update { it.copy(loading = false, error = error.userMessage()) }
@@ -85,10 +86,11 @@ class KeyViewModel(private val cryptoRepository: CryptoRepository) : ViewModel()
         _state.update { it.copy(value = cryptoRepository.generateKey(), error = null) }
     }
 
-    fun clear() {
+    fun clear(onCleared: () -> Unit = {}) {
         viewModelScope.launch {
             cryptoRepository.clearKey()
             _state.update { it.copy(configured = false, value = "", fingerprint = null, error = null) }
+            onCleared()
         }
     }
 

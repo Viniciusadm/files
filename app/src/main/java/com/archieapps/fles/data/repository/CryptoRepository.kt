@@ -113,7 +113,23 @@ class CryptoRepository(private val keyStorage: KeyStorage) {
     suspend fun tryDecryptString(value: String?): String {
         val text = value.orEmpty()
         if (text.isBlank()) return text
-        return runCatching { decryptString(text) }.getOrElse { text }
+        if (!looksLikeEnvelope(text)) return text
+        return runCatching { decryptString(text) }.getOrElse { "" }
+    }
+
+    suspend fun tryDecryptStringOrNull(value: String?): String? {
+        if (value == null) return null
+        if (value.isBlank()) return value
+        if (!looksLikeEnvelope(value)) return value
+        return runCatching { decryptString(value) }.getOrNull()
+    }
+
+    fun looksLikeEnvelope(value: String?): Boolean {
+        val text = value?.trim() ?: return false
+        if (!text.startsWith("{") || !text.endsWith("}")) return false
+        return text.contains("\"algorithm\"") &&
+            text.contains("\"iv\"") &&
+            text.contains("\"ciphertext\"")
     }
 
     private suspend fun decryptString(value: String): String {

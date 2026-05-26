@@ -27,28 +27,30 @@ class ChannelsRepository(
     private val scheduler: SyncScheduler
 ) {
     fun observeChannels(): Flow<List<Channel>> {
-        return channelDao.observeActive(false).map { rows -> rows.map { it.toUi() } }
+        return channelDao.observeActive(false).map { rows ->
+            rows.mapNotNull { if (cryptoRepository.looksLikeEnvelope(it.name)) null else it.toUi() }
+        }
     }
 
     fun observeSecureChannels(): Flow<List<Channel>> {
         return combine(channelDao.observeSecureActive(), secureFoldersRepository.state) { rows, secureState ->
-            if (!secureState.unlocked) emptyList() else rows.map { it.toSecureUi() }
+            if (!secureState.unlocked) emptyList() else rows.mapNotNull { it.toSecureUiOrNull() }
         }
     }
 
     suspend fun getChannels(): List<Channel> {
-        return channelDao.active(false).map { it.toUi() }
+        return channelDao.active(false).mapNotNull { if (cryptoRepository.looksLikeEnvelope(it.name)) null else it.toUi() }
     }
 
     suspend fun getSecureChannels(): List<Channel> {
         if (!secureFoldersRepository.state.value.unlocked) return emptyList()
-        return channelDao.secureActive().map { it.toSecureUi() }
+        return channelDao.secureActive().mapNotNull { it.toSecureUiOrNull() }
     }
 
     suspend fun getChannel(id: String): Channel? {
         val row = channelDao.byLocalId(id) ?: return null
         if (row.isSecure && !secureFoldersRepository.state.value.unlocked) return null
-        return if (row.isSecure) row.toSecureUi() else row.toUi()
+        return if (row.isSecure) row.toSecureUiOrNull() else if (cryptoRepository.looksLikeEnvelope(row.name)) null else row.toUi()
     }
 
     suspend fun getRemoteId(localId: String): String? {
@@ -159,7 +161,8 @@ class ChannelsRepository(
         val remoteUpdatedAt = parseRemoteDate(remote.updatedAt)
         val existing = channelDao.byRemoteId(remoteId)
         if (existing != null) {
-            if (existing.syncStatus == LocalSyncStatus.Synced && remoteUpdatedAt > existing.updatedAt) {
+            val staleEncryption = !existing.isSecure && cryptoRepository.looksLikeEnvelope(existing.name)
+            if (existing.syncStatus == LocalSyncStatus.Synced && (remoteUpdatedAt > existing.updatedAt || staleEncryption)) {
                 channelDao.update(
                     existing.copy(
                         name = if (remote.isSecure == true) remote.name.orEmpty() else cryptoRepository.tryDecryptString(remote.name),
@@ -211,6 +214,12 @@ class ChannelsRepository(
             name = secureFoldersRepository.tryDecryptString(name),
             lastMessagePreview = secureFoldersRepository.tryDecryptString(lastMessagePreview)
         ).toUi()
+    }
+
+    private fun ChannelEntity.toSecureUiOrNull(): Channel? {
+        val decryptedName = secureFoldersRepository.tryDecryptStringOrNull(name) ?: return null
+        val decryptedPreview = secureFoldersRepository.tryDecryptStringOrNull(lastMessagePreview) ?: ""
+        return copy(name = decryptedName, lastMessagePreview = decryptedPreview).toUi()
     }
 }
 

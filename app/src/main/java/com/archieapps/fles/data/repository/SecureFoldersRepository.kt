@@ -78,8 +78,17 @@ class SecureFoldersRepository(
     fun tryDecryptString(value: String?): String {
         val text = value.orEmpty()
         if (text.isBlank()) return text
-        val key = secureKey() ?: return text
-        return runCatching { cryptoRepository.decryptStringWithKey(text, key) }.getOrElse { text }
+        if (!cryptoRepository.looksLikeEnvelope(text)) return text
+        val key = secureKey() ?: return ""
+        return runCatching { cryptoRepository.decryptStringWithKey(text, key) }.getOrElse { "" }
+    }
+
+    fun tryDecryptStringOrNull(value: String?): String? {
+        if (value == null) return null
+        if (value.isBlank()) return value
+        if (!cryptoRepository.looksLikeEnvelope(value)) return value
+        val key = secureKey() ?: return null
+        return runCatching { cryptoRepository.decryptStringWithKey(value, key) }.getOrNull()
     }
 
     private suspend fun buildSetupRequest(pin: String): SecurePinSetupRequest {

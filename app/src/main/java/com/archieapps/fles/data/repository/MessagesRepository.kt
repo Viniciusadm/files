@@ -67,7 +67,8 @@ class MessagesRepository(
     fun observeMessages(folderId: String): Flow<List<Message>> {
         return messageDao.observeByFolderWithChildren(folderId).mapLatest { rows ->
             val secure = channelsRepository.isSecure(folderId)
-            if (secure && !secureFoldersRepository.state.value.unlocked) emptyList() else rows.map { if (secure) it.toSecureUi() else it.toUi() }
+            if (secure && !secureFoldersRepository.state.value.unlocked) emptyList()
+            else rows.mapNotNull { if (secure) it.toSecureUiOrNull() else it.toUiOrNull() }
         }
     }
 
@@ -78,12 +79,50 @@ class MessagesRepository(
                 if (secure && !secureFoldersRepository.state.value.unlocked) {
                     null
                 } else if (secure) {
-                    row.toSecureUi()
+                    row.toSecureUiOrNull()
                 } else {
-                    row.toUi()
+                    row.toUiOrNull()
                 }
             }
         }
+    }
+
+    private fun MessageEntityWithChildren.toUiOrNull(): Message? {
+        val activeListItems = listItems.filter { it.deletedAt == null }
+        val activeAttachments = attachments.filter { it.deletedAt == null }
+        val itemsClean = activeListItems.filter { !cryptoRepository.looksLikeEnvelope(it.text) }
+        val attachmentsClean = activeAttachments.filter { !cryptoRepository.looksLikeEnvelope(it.fileName) }
+        val contentEnvelope = cryptoRepository.looksLikeEnvelope(message.content)
+        if (contentEnvelope) {
+            if (attachmentsClean.isEmpty() && itemsClean.isEmpty()) return null
+            return message.copy(content = "").toUi(
+                itemsClean.sortedBy { it.position }.map { it.toUi() },
+                attachmentsClean.map { it.toUi() }
+            )
+        }
+        return message.toUi(
+            itemsClean.sortedBy { it.position }.map { it.toUi() },
+            attachmentsClean.map { it.toUi() }
+        )
+    }
+
+    private fun MessageEntityWithChildren.toSecureUiOrNull(): Message? {
+        val activeListItems = listItems.filter { it.deletedAt == null }
+        val activeAttachments = attachments.filter { it.deletedAt == null }
+        val decryptedContent = secureFoldersRepository.tryDecryptStringOrNull(message.content)
+        val itemsDecrypted = activeListItems.mapNotNull { item ->
+            val text = secureFoldersRepository.tryDecryptStringOrNull(item.text) ?: return@mapNotNull null
+            item.copy(text = text).toUi()
+        }
+        val attachmentsDecrypted = activeAttachments.mapNotNull { att ->
+            val name = secureFoldersRepository.tryDecryptStringOrNull(att.fileName) ?: return@mapNotNull null
+            att.copy(fileName = name).toUi()
+        }
+        if (decryptedContent == null && itemsDecrypted.isEmpty() && attachmentsDecrypted.isEmpty()) return null
+        return message.copy(content = decryptedContent ?: "").toUi(
+            itemsDecrypted.sortedBy { it.position },
+            attachmentsDecrypted
+        )
     }
 
     suspend fun getMessages(folderId: String): List<Message> {
@@ -585,7 +624,7 @@ class MessagesRepository(
         val secure = remote.folderIsSecure == true || channelsRepository.isSecure(folderLocalId)
         if (existing == null) {
             messageDao.upsert(MessageEntity(localId, remoteId, folderLocalId, remote.type.toLocalMessageType(), localString(remote.content, secure), remote.isFavorite.asBoolean(), LocalSyncStatus.Synced, null, remoteCreatedAt, remoteUpdatedAt, null))
-        } else if (existing.syncStatus == LocalSyncStatus.Synced && remoteUpdatedAt > existing.updatedAt) {
+        } else if (existing.syncStatus == LocalSyncStatus.Synced && (remoteUpdatedAt > existing.updatedAt || (!secure && cryptoRepository.looksLikeEnvelope(existing.content)))) {
             messageDao.update(existing.copy(folderLocalId = folderLocalId, type = remote.type.toLocalMessageType(), content = localString(remote.content, secure), isFavorite = remote.isFavorite.asBoolean(), updatedAt = remoteUpdatedAt, lastError = null))
         }
         remote.listItems.orEmpty().forEach { upsertListItemFromRemote(localId, it, secure) }
@@ -599,7 +638,7 @@ class MessagesRepository(
         val updatedAt = parseRemoteDate(remote.updatedAt)
         if (existing == null) {
             listItemDao.upsert(ListItemEntity(UUID.randomUUID().toString(), remoteId, messageLocalId, localString(remote.text, secure), remote.isChecked.asBoolean(), remote.position.asDouble(), LocalSyncStatus.Synced, null, parseRemoteDate(remote.createdAt), updatedAt, null))
-        } else if (existing.syncStatus == LocalSyncStatus.Synced && updatedAt > existing.updatedAt) {
+        } else if (existing.syncStatus == LocalSyncStatus.Synced && (updatedAt > existing.updatedAt || (!secure && cryptoRepository.looksLikeEnvelope(existing.text)))) {
             listItemDao.update(existing.copy(text = localString(remote.text, secure), isChecked = remote.isChecked.asBoolean(), position = remote.position.asDouble(), updatedAt = updatedAt, lastError = null))
         }
     }

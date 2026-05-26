@@ -3,6 +3,7 @@ package com.archieapps.fles
 import android.os.Bundle
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
 import androidx.compose.foundation.background
@@ -70,6 +71,7 @@ class MainActivity : FragmentActivity() {
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        installSplashScreen()
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         val appContainer = (application as FlesApp).container
@@ -110,6 +112,7 @@ fun FlesAppRoot(
         SessionState.Loading -> LoadingScreen()
         SessionState.Unauthenticated -> AuthNavHost(
             appContainer = appContainer,
+            activity = activity,
             onAuthenticated = {
                 appLockViewModel.markUnlocked()
                 sessionViewModel.markAuthenticated()
@@ -158,6 +161,7 @@ private fun LoadingScreen() {
 @Composable
 private fun AuthNavHost(
     appContainer: AppContainer,
+    activity: FragmentActivity,
     onAuthenticated: () -> Unit
 ) {
     val navController = rememberNavController()
@@ -187,9 +191,9 @@ private fun AuthNavHost(
                 state = state,
                 onBack = { navController.popBackStack() },
                 onValueChange = keyViewModel::onValueChange,
-                onSave = keyViewModel::save,
+                onSave = { keyViewModel.save { activity.recreate() } },
                 onGenerate = keyViewModel::generate,
-                onClear = keyViewModel::clear
+                onClear = { keyViewModel.clear { activity.recreate() } }
             )
         }
     }
@@ -421,9 +425,9 @@ private fun AuthenticatedNavHost(
                     state = state,
                     onBack = { navController.popBackStack() },
                     onValueChange = keyViewModel::onValueChange,
-                    onSave = keyViewModel::save,
+                    onSave = { keyViewModel.save { activity.recreate() } },
                     onGenerate = keyViewModel::generate,
-                    onClear = keyViewModel::clear
+                    onClear = { keyViewModel.clear { activity.recreate() } }
                 )
             }
         }

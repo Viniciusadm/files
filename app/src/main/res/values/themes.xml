@@ -2,4 +2,10 @@
 <resources>
 
     <style name="Theme.Fles" parent="android:Theme.Material.Light.NoActionBar" />
+
+    <style name="Theme.Fles.Starting" parent="Theme.SplashScreen">
+        <item name="windowSplashScreenBackground">@color/splash_background</item>
+        <item name="windowSplashScreenAnimatedIcon">@mipmap/ic_launcher_foreground</item>
+        <item name="postSplashScreenTheme">@style/Theme.Fles</item>
+    </style>
 </resources>
