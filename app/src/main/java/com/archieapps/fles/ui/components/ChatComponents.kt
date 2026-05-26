@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.Intent
 import android.graphics.BitmapFactory
 import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
@@ -147,6 +148,7 @@ fun ChatHeader(
 ) {
     val colors = FlesTheme.colors
     var menuOpen by remember { mutableStateOf(false) }
+    var confirmDelete by remember { mutableStateOf(false) }
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -179,11 +181,20 @@ fun ChatHeader(
                     leadingIcon = { Icon(Icons.Filled.Delete, null, tint = colors.destructive) },
                     onClick = {
                         menuOpen = false
-                        onDeleteClick()
+                        confirmDelete = true
                     }
                 )
             }
         }
+    }
+    if (confirmDelete) {
+        AlertDialog(
+            onDismissRequest = { confirmDelete = false },
+            title = { Text("Excluir conversa") },
+            text = { Text("Essa ação remove a pasta e todas as mensagens contidas.") },
+            confirmButton = { AppButton("Excluir", variant = AppButtonVariant.Destructive, onClick = { confirmDelete = false; onDeleteClick() }) },
+            dismissButton = { AppButton("Cancelar", variant = AppButtonVariant.Ghost, onClick = { confirmDelete = false }) }
+        )
     }
 }
 
@@ -1104,8 +1115,8 @@ fun Composer(
             }
             .onFailure { attachmentError = it.message ?: "Não foi possível anexar o arquivo." }
     }
-    val images = rememberLauncherForActivityResult(ActivityResultContracts.GetMultipleContents()) { uris ->
-        runCatching { uris.map { attachmentIo.pendingFromUri(it, "image/*") } }
+    val images = rememberLauncherForActivityResult(ActivityResultContracts.PickMultipleVisualMedia()) { uris ->
+        runCatching { uris.map { attachmentIo.pendingFromUri(it) } }
             .onSuccess {
                 pending.addAll(it)
                 attachmentError = null
@@ -1159,8 +1170,23 @@ fun Composer(
             title = { Text("Anexar") },
             text = {
                 Column {
-                    DropdownLikeRow("Galeria", Icons.Filled.PhotoLibrary) { pickerOpen = false; images.launch("image/*") }
-                    DropdownLikeRow("Arquivos", Icons.Filled.AttachFile) { pickerOpen = false; docs.launch(arrayOf("*/*")) }
+                    DropdownLikeRow("Galeria", Icons.Filled.PhotoLibrary) {
+                        pickerOpen = false
+                        runCatching {
+                            images.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageAndVideo))
+                        }.onFailure {
+                            android.util.Log.e("Composer", "Falha ao abrir galeria", it)
+                            attachmentError = "Não foi possível abrir a galeria: ${it.message}"
+                        }
+                    }
+                    DropdownLikeRow("Arquivos", Icons.Filled.AttachFile) {
+                        pickerOpen = false
+                        runCatching { docs.launch(arrayOf("*/*")) }
+                            .onFailure {
+                                android.util.Log.e("Composer", "Falha ao abrir arquivos", it)
+                                attachmentError = "Não foi possível abrir arquivos: ${it.message}"
+                            }
+                    }
                 }
             },
             confirmButton = {},

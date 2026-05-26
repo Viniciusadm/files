@@ -15,7 +15,6 @@ import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material.icons.filled.Message
@@ -25,9 +24,11 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
@@ -41,7 +42,8 @@ import com.archieapps.fles.ui.components.FolderListItem
 import com.archieapps.fles.ui.components.IconButtonBox
 import com.archieapps.fles.ui.components.MessageList
 import com.archieapps.fles.ui.components.SharedSearchBar
-import com.archieapps.fles.ui.components.flattenChannelTree
+import com.archieapps.fles.ui.components.ChannelTreeNode
+import com.archieapps.fles.ui.components.buildChannelTree
 import com.archieapps.fles.ui.model.Channel
 import com.archieapps.fles.ui.model.Attachment
 import com.archieapps.fles.ui.model.PendingAttachment
@@ -61,6 +63,7 @@ fun MessagesScreen(
 ) {
     val colors = FlesTheme.colors
     var query by remember { mutableStateOf("") }
+    val expandedMap = remember { mutableStateMapOf<String, Boolean>() }
     Column(modifier = Modifier.fillMaxSize().background(colors.background)) {
         Row(
             modifier = Modifier
@@ -96,13 +99,14 @@ fun MessagesScreen(
             is UiState.Error -> EmptyState(title = "Erro ao carregar", description = state.message, icon = Icons.Filled.ErrorOutline, modifier = Modifier.fillMaxSize())
             is UiState.Success -> LazyColumn(
                 modifier = Modifier.fillMaxSize(),
-                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 8.dp).let {
-                    PaddingValues(start = 8.dp, end = 8.dp, top = 8.dp, bottom = 96.dp)
-                }
+                contentPadding = PaddingValues(start = 8.dp, end = 8.dp, top = 8.dp, bottom = 96.dp)
             ) {
-                items(flattenChannelTree(state.data), key = { it.channel.id }) {
-                    FolderListItem(channel = it.channel, active = false, depth = it.depth, onClick = { onThreadClick(it.channel.id) })
-                }
+                renderChannelNodes(
+                    nodes = buildChannelTree(state.data),
+                    depth = 0,
+                    expandedMap = expandedMap,
+                    onThreadClick = onThreadClick
+                )
             }
         }
     }
@@ -201,6 +205,36 @@ fun ThreadScreen(
                     )
                 }
             }
+        }
+    }
+}
+
+private fun LazyListScope.renderChannelNodes(
+    nodes: List<ChannelTreeNode>,
+    depth: Int,
+    expandedMap: androidx.compose.runtime.snapshots.SnapshotStateMap<String, Boolean>,
+    onThreadClick: (String) -> Unit
+) {
+    nodes.forEach { node ->
+        val id = node.channel.id
+        val hasChildren = node.children.isNotEmpty()
+        val isExpanded = expandedMap[id] == true
+        item(key = id) {
+            FolderListItem(
+                channel = node.channel,
+                active = false,
+                depth = depth,
+                hasChildren = hasChildren,
+                expanded = isExpanded,
+                childCount = node.children.size,
+                onToggleExpand = if (hasChildren) ({
+                    expandedMap[id] = !(expandedMap[id] ?: false)
+                }) else null,
+                onClick = { onThreadClick(id) }
+            )
+        }
+        if (hasChildren && isExpanded) {
+            renderChannelNodes(node.children, depth + 1, expandedMap, onThreadClick)
         }
     }
 }

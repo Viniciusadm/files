@@ -19,13 +19,17 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.draw.shadow
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.BusinessCenter
+import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.Inbox
 import androidx.compose.material.icons.filled.School
 import androidx.compose.material.icons.filled.Star
+import androidx.compose.runtime.getValue
+import androidx.compose.ui.draw.rotate
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -47,27 +51,40 @@ data class ChannelTreeItem(
     val depth: Int
 )
 
-fun flattenChannelTree(channels: List<Channel>): List<ChannelTreeItem> {
+data class ChannelTreeNode(
+    val channel: Channel,
+    val children: List<ChannelTreeNode>
+)
+
+fun buildChannelTree(channels: List<Channel>): List<ChannelTreeNode> {
     val childrenByParent = channels.groupBy { it.parentId }
     val seen = mutableSetOf<String>()
-    val result = mutableListOf<ChannelTreeItem>()
 
-    fun append(parentId: String?, depth: Int) {
-        childrenByParent[parentId].orEmpty().forEach { channel ->
-            if (!seen.add(channel.id)) return@forEach
-            result += ChannelTreeItem(channel, depth)
-            append(channel.id, depth + 1)
+    fun build(parentId: String?): List<ChannelTreeNode> {
+        return childrenByParent[parentId].orEmpty().mapNotNull { channel ->
+            if (!seen.add(channel.id)) null
+            else ChannelTreeNode(channel, build(channel.id))
         }
     }
 
-    append(null, 0)
+    val roots = build(null).toMutableList()
     channels.forEach { channel ->
         if (seen.add(channel.id)) {
-            result += ChannelTreeItem(channel, 0)
-            append(channel.id, 1)
+            roots += ChannelTreeNode(channel, build(channel.id))
         }
     }
+    return roots
+}
 
+fun flattenChannelTree(channels: List<Channel>): List<ChannelTreeItem> {
+    val result = mutableListOf<ChannelTreeItem>()
+    fun walk(nodes: List<ChannelTreeNode>, depth: Int) {
+        nodes.forEach { node ->
+            result += ChannelTreeItem(node.channel, depth)
+            walk(node.children, depth + 1)
+        }
+    }
+    walk(buildChannelTree(channels), 0)
     return result
 }
 
@@ -153,9 +170,14 @@ fun FolderListItem(
     active: Boolean,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
-    depth: Int = 0
+    depth: Int = 0,
+    hasChildren: Boolean = false,
+    expanded: Boolean = false,
+    childCount: Int = 0,
+    onToggleExpand: (() -> Unit)? = null
 ) {
     val colors = FlesTheme.colors
+    val chevronRotation by animateFloatAsState(targetValue = if (expanded) 90f else 0f, label = "chevron")
     Row(
         modifier = modifier
             .clip(androidx.compose.foundation.shape.RoundedCornerShape(FlesTheme.radius.lg))
@@ -163,22 +185,63 @@ fun FolderListItem(
             .clickable(onClick = onClick)
             .fillMaxWidth()
             .height(56.dp)
-            .padding(start = (depth * 18).dp),
+            .padding(start = (depth * 12).dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Spacer(Modifier.width(8.dp))
+        if (depth > 0) {
+            Box(
+                modifier = Modifier
+                    .width(1.dp)
+                    .height(40.dp)
+                    .background(colors.border)
+            )
+            Spacer(Modifier.width(8.dp))
+        }
+        if (hasChildren && onToggleExpand != null) {
+            Box(
+                modifier = Modifier
+                    .size(28.dp)
+                    .clip(CircleShape)
+                    .clickable(onClick = onToggleExpand),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    Icons.Filled.ChevronRight,
+                    contentDescription = if (expanded) "Colapsar" else "Expandir",
+                    tint = colors.mutedForeground,
+                    modifier = Modifier
+                        .size(20.dp)
+                        .rotate(chevronRotation)
+                )
+            }
+            Spacer(Modifier.width(4.dp))
+        } else {
+            Spacer(Modifier.width(32.dp))
+        }
         FolderAvatar(channel.name, channel.color, size = 40.dp, icon = folderIcon(channel.icon))
         Spacer(Modifier.width(12.dp))
         Column(modifier = Modifier.weight(1f)) {
-            Text(
-                channel.name,
-                color = colors.sidebarForeground,
-                fontSize = 14.sp,
-                lineHeight = 20.sp,
-                fontWeight = FontWeight.Medium,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    channel.name,
+                    color = colors.sidebarForeground,
+                    fontSize = 14.sp,
+                    lineHeight = 20.sp,
+                    fontWeight = FontWeight.Medium,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f, fill = false)
+                )
+                if (hasChildren && childCount > 0) {
+                    Spacer(Modifier.width(6.dp))
+                    Text(
+                        "($childCount)",
+                        color = colors.mutedForeground,
+                        fontSize = 12.sp,
+                        lineHeight = 16.sp
+                    )
+                }
+            }
             Text(
                 channel.lastMessage,
                 color = colors.mutedForeground,

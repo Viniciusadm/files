@@ -182,7 +182,11 @@ fun FilesToolbar(
                     }
                 }
                 listOf(FileKind.Image, FileKind.Video).forEach { kind ->
-                    val label = kindStyle(kind).label + "s"
+                    val label = when (kind) {
+                        FileKind.Image -> "Imagens"
+                        FileKind.Video -> "Vídeos"
+                        else -> kindStyle(kind).label + "s"
+                    }
                     Badge(
                         label,
                         active = activeKind == kind,
