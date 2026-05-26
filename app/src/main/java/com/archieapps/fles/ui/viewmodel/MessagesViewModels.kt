@@ -45,6 +45,22 @@ class MessagesViewModel(private val channelsRepository: ChannelsRepository) : Vi
                 .onFailure { _state.value = UiState.Error(it.userMessage()) }
         }
     }
+
+    fun renameChannel(id: String, name: String, onDone: () -> Unit = {}) {
+        viewModelScope.launch {
+            runCatching { channelsRepository.renameChannel(id, name) }
+                .onSuccess { onDone() }
+                .onFailure { _state.value = UiState.Error(it.userMessage()) }
+        }
+    }
+
+    fun deleteChannel(id: String, onDone: () -> Unit = {}) {
+        viewModelScope.launch {
+            runCatching { channelsRepository.deleteChannel(id) }
+                .onSuccess { onDone() }
+                .onFailure { _state.value = UiState.Error(it.userMessage()) }
+        }
+    }
 }
 
 class ThreadViewModel(
@@ -93,6 +109,18 @@ class ThreadViewModel(
             runCatching { messagesRepository.createChecklist(folderId, title, items) }
                 .onSuccess {
                     _action.value = ThreadActionState(success = "Lista criada")
+                    onDone()
+                }
+                .onFailure { _action.value = ThreadActionState(error = it.userMessage()) }
+        }
+    }
+
+    fun renameThread(name: String, onDone: () -> Unit = {}) {
+        viewModelScope.launch {
+            _action.value = ThreadActionState(sending = true)
+            runCatching { channelsRepository.renameChannel(folderId, name) }
+                .onSuccess {
+                    _action.value = ThreadActionState(success = "Renomeado")
                     onDone()
                 }
                 .onFailure { _action.value = ThreadActionState(error = it.userMessage()) }

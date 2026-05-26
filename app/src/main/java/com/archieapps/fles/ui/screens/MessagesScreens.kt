@@ -36,11 +36,13 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.archieapps.fles.ui.components.ChatHeader
 import com.archieapps.fles.ui.components.Composer
+import com.archieapps.fles.ui.components.ConfirmDeleteChannelDialog
 import com.archieapps.fles.ui.components.CreateChannelDialog
 import com.archieapps.fles.ui.components.EmptyState
 import com.archieapps.fles.ui.components.FolderListItem
 import com.archieapps.fles.ui.components.IconButtonBox
 import com.archieapps.fles.ui.components.MessageList
+import com.archieapps.fles.ui.components.RenameChannelDialog
 import com.archieapps.fles.ui.components.SharedSearchBar
 import com.archieapps.fles.ui.components.ChannelTreeNode
 import com.archieapps.fles.ui.components.buildChannelTree
@@ -60,10 +62,16 @@ fun MessagesScreen(
     expandedMap: SnapshotStateMap<String, Boolean>,
     onOpenSettings: () -> Unit,
     onThreadClick: (String) -> Unit,
-    onNavigateSearch: (String) -> Unit
+    onNavigateSearch: (String) -> Unit,
+    onRenameChannel: (String, String) -> Unit = { _, _ -> },
+    onDeleteChannel: (String) -> Unit = {},
+    onCreateSubfolder: (String, String, String, String, Boolean) -> Unit = { _, _, _, _, _ -> }
 ) {
     val colors = FlesTheme.colors
     var query by remember { mutableStateOf("") }
+    var renameTarget by remember { mutableStateOf<Channel?>(null) }
+    var deleteTarget by remember { mutableStateOf<Channel?>(null) }
+    var subfolderTarget by remember { mutableStateOf<Channel?>(null) }
     Column(modifier = Modifier.fillMaxSize().background(colors.background)) {
         Row(
             modifier = Modifier
@@ -105,10 +113,46 @@ fun MessagesScreen(
                     nodes = buildChannelTree(state.data),
                     depth = 0,
                     expandedMap = expandedMap,
-                    onThreadClick = onThreadClick
+                    onThreadClick = onThreadClick,
+                    onCreateSubfolderRequest = { subfolderTarget = it },
+                    onRenameRequest = { renameTarget = it },
+                    onDeleteRequest = { deleteTarget = it }
                 )
             }
         }
+    }
+    renameTarget?.let { target ->
+        RenameChannelDialog(
+            currentName = target.name,
+            onClose = { renameTarget = null },
+            onConfirm = { newName ->
+                onRenameChannel(target.id, newName)
+                renameTarget = null
+            }
+        )
+    }
+    deleteTarget?.let { target ->
+        ConfirmDeleteChannelDialog(
+            onClose = { deleteTarget = null },
+            onConfirm = {
+                onDeleteChannel(target.id)
+                deleteTarget = null
+            }
+        )
+    }
+    subfolderTarget?.let { target ->
+        CreateChannelDialog(
+            secureEnabled = false,
+            title = "Nova subpasta",
+            confirmLabel = "Criar subpasta",
+            secureOptionVisible = false,
+            initialSecure = target.isSecure,
+            onClose = { subfolderTarget = null },
+            onCreate = { name, icon, color, isSecure ->
+                onCreateSubfolder(target.id, name, icon, color, isSecure)
+                subfolderTarget = null
+            }
+        )
     }
 }
 
@@ -122,6 +166,7 @@ fun ThreadScreen(
     onOpenSettings: () -> Unit,
     onBack: () -> Unit,
     onDeleteThread: () -> Unit,
+    onRenameThread: (String) -> Unit,
     onCreateSubfolder: (String, String, String, Boolean) -> Unit,
     onSend: (String, List<PendingAttachment>) -> Unit,
     onCreateList: (String, List<String>) -> Unit,
@@ -139,6 +184,7 @@ fun ThreadScreen(
     onDownload: suspend (Attachment) -> File
 ) {
     var createSubfolderOpen by remember { mutableStateOf(false) }
+    var renameOpen by remember { mutableStateOf(false) }
     Box(modifier = Modifier.fillMaxSize().background(FlesTheme.colors.chatBg)) {
         when (state) {
             UiState.Loading -> Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -154,6 +200,7 @@ fun ThreadScreen(
                         onMenuClick = onOpenSettings,
                         onBack = onBack,
                         onCreateSubfolderClick = { createSubfolderOpen = true },
+                        onRenameClick = { renameOpen = true },
                         onDeleteClick = onDeleteThread
                     )
                     Box(modifier = Modifier.weight(1f)) {
@@ -204,6 +251,16 @@ fun ThreadScreen(
                         }
                     )
                 }
+                if (renameOpen) {
+                    RenameChannelDialog(
+                        currentName = state.data.channel.name,
+                        onClose = { renameOpen = false },
+                        onConfirm = { newName ->
+                            onRenameThread(newName)
+                            renameOpen = false
+                        }
+                    )
+                }
             }
         }
     }
@@ -213,7 +270,10 @@ private fun LazyListScope.renderChannelNodes(
     nodes: List<ChannelTreeNode>,
     depth: Int,
     expandedMap: SnapshotStateMap<String, Boolean>,
-    onThreadClick: (String) -> Unit
+    onThreadClick: (String) -> Unit,
+    onCreateSubfolderRequest: (Channel) -> Unit,
+    onRenameRequest: (Channel) -> Unit,
+    onDeleteRequest: (Channel) -> Unit
 ) {
     nodes.forEach { node ->
         val id = node.channel.id
@@ -230,11 +290,14 @@ private fun LazyListScope.renderChannelNodes(
                 onToggleExpand = if (hasChildren) ({
                     expandedMap[id] = !(expandedMap[id] ?: false)
                 }) else null,
-                onClick = { onThreadClick(id) }
+                onClick = { onThreadClick(id) },
+                onCreateSubfolder = { onCreateSubfolderRequest(node.channel) },
+                onRename = { onRenameRequest(node.channel) },
+                onDelete = { onDeleteRequest(node.channel) }
             )
         }
         if (hasChildren && isExpanded) {
-            renderChannelNodes(node.children, depth + 1, expandedMap, onThreadClick)
+            renderChannelNodes(node.children, depth + 1, expandedMap, onThreadClick, onCreateSubfolderRequest, onRenameRequest, onDeleteRequest)
         }
     }
 }

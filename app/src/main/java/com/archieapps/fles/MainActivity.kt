@@ -272,7 +272,10 @@ private fun AuthenticatedNavHost(
                     expandedMap = messagesExpandedMap,
                     onOpenSettings = openSettings,
                     onThreadClick = { navController.navigate(AppRoutes.thread(it)) },
-                    onNavigateSearch = { navController.navigate(AppRoutes.search(it)) }
+                    onNavigateSearch = { navController.navigate(AppRoutes.search(it)) },
+                    onRenameChannel = { id, name -> messagesViewModel.renameChannel(id, name) },
+                    onDeleteChannel = { id -> messagesViewModel.deleteChannel(id) },
+                    onCreateSubfolder = { parentId, name, icon, color, isSecure -> createSubfolder(name, icon, color, isSecure, parentId) }
                 )
             }
         }
@@ -298,6 +301,7 @@ private fun AuthenticatedNavHost(
                     onOpenSettings = openSettings,
                     onBack = { navController.popBackStack() },
                     onDeleteThread = { threadViewModel.deleteThread { navController.popBackStack() } },
+                    onRenameThread = { newName -> threadViewModel.renameThread(newName) },
                     onCreateSubfolder = { name, icon, color, isSecure -> createSubfolder(name, icon, color, isSecure, folderId) },
                     onSend = { text, attachments -> threadViewModel.send(text, attachments) {} },
                     onCreateList = { title, items -> threadViewModel.createChecklist(title, items) {} },

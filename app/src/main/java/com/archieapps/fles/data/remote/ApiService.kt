@@ -42,6 +42,9 @@ interface ApiService {
     @POST("folders")
     suspend fun createFolder(@Body request: CreateFolderRequest): ApiEnvelope<RemoteChannel>
 
+    @PATCH("folders/{id}")
+    suspend fun updateFolder(@Path("id") id: String, @Body request: UpdateFolderRequest): ApiEnvelope<RemoteChannel>
+
     @DELETE("folders/{id}")
     suspend fun deleteFolder(@Path("id") id: String): ApiEnvelope<Unit>
 
@@ -260,6 +263,14 @@ data class CreateFolderRequest(
     val icon: String,
     val color: String,
     val isSecure: Boolean = false
+)
+
+data class UpdateFolderRequest(
+    val name: String? = null,
+    val icon: String? = null,
+    val color: String? = null,
+    val parentId: String? = null,
+    val isSecure: Boolean? = null
 )
 
 data class SecureFolderMetaResponse(

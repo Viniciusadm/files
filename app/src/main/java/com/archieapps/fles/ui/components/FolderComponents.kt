@@ -4,6 +4,7 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -23,12 +24,21 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.BusinessCenter
 import androidx.compose.material.icons.filled.ChevronRight
+import androidx.compose.material.icons.filled.CreateNewFolder
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.Inbox
 import androidx.compose.material.icons.filled.School
 import androidx.compose.material.icons.filled.Star
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.draw.rotate
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
@@ -174,15 +184,24 @@ fun FolderListItem(
     hasChildren: Boolean = false,
     expanded: Boolean = false,
     childCount: Int = 0,
-    onToggleExpand: (() -> Unit)? = null
+    onToggleExpand: (() -> Unit)? = null,
+    onCreateSubfolder: (() -> Unit)? = null,
+    onRename: (() -> Unit)? = null,
+    onDelete: (() -> Unit)? = null
 ) {
     val colors = FlesTheme.colors
     val chevronRotation by animateFloatAsState(targetValue = if (expanded) 90f else 0f, label = "chevron")
+    var menuOpen by remember { mutableStateOf(false) }
+    val hasContextMenu = onCreateSubfolder != null || onRename != null || onDelete != null
+    Box(modifier = modifier.fillMaxWidth()) {
     Row(
-        modifier = modifier
+        modifier = Modifier
             .clip(androidx.compose.foundation.shape.RoundedCornerShape(FlesTheme.radius.lg))
             .background(if (active) colors.sidebarAccent else Color.Transparent)
-            .clickable(onClick = onClick)
+            .let {
+                if (hasContextMenu) it.combinedClickable(onClick = onClick, onLongClick = { menuOpen = true })
+                else it.clickable(onClick = onClick)
+            }
             .fillMaxWidth()
             .height(56.dp)
             .padding(start = (depth * 12).dp),
@@ -253,4 +272,77 @@ fun FolderListItem(
         }
         Spacer(Modifier.width(8.dp))
     }
+        if (hasContextMenu) {
+            DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+                if (onCreateSubfolder != null) {
+                    DropdownMenuItem(
+                        text = { Text("Nova subpasta", color = colors.foreground) },
+                        leadingIcon = { Icon(Icons.Filled.CreateNewFolder, null, tint = colors.foreground) },
+                        onClick = {
+                            menuOpen = false
+                            onCreateSubfolder()
+                        }
+                    )
+                }
+                if (onRename != null) {
+                    DropdownMenuItem(
+                        text = { Text("Renomear", color = colors.foreground) },
+                        leadingIcon = { Icon(Icons.Filled.Edit, null, tint = colors.foreground) },
+                        onClick = {
+                            menuOpen = false
+                            onRename()
+                        }
+                    )
+                }
+                if (onDelete != null) {
+                    DropdownMenuItem(
+                        text = { Text("Excluir", color = colors.destructive) },
+                        leadingIcon = { Icon(Icons.Filled.Delete, null, tint = colors.destructive) },
+                        onClick = {
+                            menuOpen = false
+                            onDelete()
+                        }
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun RenameChannelDialog(
+    currentName: String,
+    onClose: () -> Unit,
+    onConfirm: (String) -> Unit
+) {
+    var name by remember { mutableStateOf(currentName) }
+    AlertDialog(
+        onDismissRequest = onClose,
+        title = { Text("Renomear pasta") },
+        text = {
+            AppInput(name, { name = it }, "Nome da pasta")
+        },
+        confirmButton = {
+            AppButton(
+                "Salvar",
+                enabled = name.trim().isNotBlank() && name.trim() != currentName,
+                onClick = { onConfirm(name.trim()) }
+            )
+        },
+        dismissButton = { AppButton("Cancelar", variant = AppButtonVariant.Ghost, onClick = onClose) }
+    )
+}
+
+@Composable
+fun ConfirmDeleteChannelDialog(
+    onClose: () -> Unit,
+    onConfirm: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onClose,
+        title = { Text("Excluir conversa") },
+        text = { Text("Essa ação remove a pasta e todas as mensagens contidas.") },
+        confirmButton = { AppButton("Excluir", variant = AppButtonVariant.Destructive, onClick = onConfirm) },
+        dismissButton = { AppButton("Cancelar", variant = AppButtonVariant.Ghost, onClick = onClose) }
+    )
 }

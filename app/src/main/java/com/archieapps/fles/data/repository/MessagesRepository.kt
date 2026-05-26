@@ -67,7 +67,7 @@ class MessagesRepository(
 ) {
     private companion object {
         const val UPLOAD_CHUNK_SIZE = 2 * 1024 * 1024
-        const val ATTACHMENT_BATCH_SIZE = 10
+        const val ATTACHMENT_BATCH_SIZE = 30
     }
 
     fun observeMessages(folderId: String): Flow<List<Message>> {

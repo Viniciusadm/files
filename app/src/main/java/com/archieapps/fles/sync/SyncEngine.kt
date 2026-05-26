@@ -73,6 +73,7 @@ class SyncEngine(
             runCatching {
                 when ("${op.entity}.${op.opType}") {
                     "channel.create" -> channelsRepository.pushCreate(op.entityLocalId)
+                    "channel.update" -> channelsRepository.pushUpdate(op.entityLocalId)
                     "channel.delete" -> channelsRepository.pushDelete(op.entityLocalId)
                     "message.create" -> messagesRepository.pushMessageCreate(op.entityLocalId)
                     "message.delete" -> messagesRepository.pushMessageDelete(op.entityLocalId)

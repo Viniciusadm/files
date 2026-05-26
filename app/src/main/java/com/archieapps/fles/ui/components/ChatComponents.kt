@@ -150,6 +150,7 @@ fun ChatHeader(
     onMenuClick: () -> Unit,
     onBack: (() -> Unit)? = null,
     onCreateSubfolderClick: () -> Unit = {},
+    onRenameClick: () -> Unit = {},
     onDeleteClick: () -> Unit = {}
 ) {
     val colors = FlesTheme.colors
@@ -180,6 +181,14 @@ fun ChatHeader(
                     onClick = {
                         menuOpen = false
                         onCreateSubfolderClick()
+                    }
+                )
+                DropdownMenuItem(
+                    text = { Text("Renomear", color = colors.foreground) },
+                    leadingIcon = { Icon(Icons.Filled.Edit, null, tint = colors.foreground) },
+                    onClick = {
+                        menuOpen = false
+                        onRenameClick()
                     }
                 )
                 DropdownMenuItem(

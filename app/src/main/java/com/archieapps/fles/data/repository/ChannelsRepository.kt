@@ -8,6 +8,7 @@ import com.archieapps.fles.data.local.db.parseRemoteDate
 import com.archieapps.fles.data.remote.ApiService
 import com.archieapps.fles.data.remote.CreateFolderRequest
 import com.archieapps.fles.data.remote.RemoteChannel
+import com.archieapps.fles.data.remote.UpdateFolderRequest
 import com.archieapps.fles.data.remote.requireBody
 import com.archieapps.fles.data.remote.requireSuccess
 import com.archieapps.fles.sync.SyncQueueRepository
@@ -96,6 +97,43 @@ class ChannelsRepository(
         )
         scheduler.scheduleNow()
         return if (inheritedSecure) entity.toSecureUi() else entity.toUi()
+    }
+
+    suspend fun renameChannel(id: String, newName: String) {
+        val trimmed = newName.trim()
+        require(trimmed.isNotBlank()) { "Informe um nome" }
+        val row = channelDao.byLocalId(id) ?: return
+        if (row.isSecure && !secureFoldersRepository.state.value.unlocked) throw IllegalStateException("Pastas seguras bloqueadas.")
+        val storedName = if (row.isSecure) secureFoldersRepository.encryptString(trimmed) else trimmed
+        if (storedName == row.name) return
+        val now = nowMs()
+        val nextStatus = if (row.syncStatus == LocalSyncStatus.PendingCreate) LocalSyncStatus.PendingCreate else LocalSyncStatus.PendingUpdate
+        channelDao.update(row.copy(name = storedName, syncStatus = nextStatus, updatedAt = now, lastError = null))
+        if (nextStatus == LocalSyncStatus.PendingUpdate) {
+            queueRepository.enqueue(
+                opType = "update",
+                entity = "channel",
+                entityLocalId = id,
+                dependsOnId = queueRepository.lastPendingOpId(id)
+            )
+            scheduler.scheduleNow()
+        }
+    }
+
+    suspend fun pushUpdate(localId: String) {
+        val local = channelDao.byLocalId(localId) ?: return
+        val remoteId = local.remoteId ?: throw IllegalStateException("Pasta ainda sem remoteId")
+        val remoteName = if (local.isSecure) local.name else cryptoRepository.encryptString(local.name)
+        val remote = apiService.updateFolder(remoteId, UpdateFolderRequest(name = remoteName)).requireBody()
+        channelDao.byLocalId(localId)?.let {
+            channelDao.update(
+                it.copy(
+                    updatedAt = parseRemoteDate(remote.updatedAt),
+                    syncStatus = LocalSyncStatus.Synced,
+                    lastError = null
+                )
+            )
+        }
     }
 
     suspend fun deleteChannel(id: String) {
