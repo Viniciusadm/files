@@ -20,16 +20,22 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.itemsIndexed
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
@@ -512,31 +518,42 @@ fun AttachmentGrid(
     onDownload: suspend (Attachment) -> File
 ) {
     if (attachments.isEmpty()) return
-    val images = attachments.filter { it.kind == FileKind.Image }
-    val videos = attachments.filter { it.kind == FileKind.Video }
+    val media = attachments.filter { it.kind == FileKind.Image || it.kind == FileKind.Video }
     val docs = attachments.filter { it.kind != FileKind.Image && it.kind != FileKind.Video }
     val context = LocalContext.current
+    var albumOpen by remember { mutableStateOf(false) }
     var viewerIndex by remember { mutableStateOf<Int?>(null) }
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        if (images.isNotEmpty()) {
-            FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                images.forEachIndexed { index, attachment ->
+        when {
+            media.size == 1 -> {
+                val attachment = media[0]
+                if (attachment.kind == FileKind.Image) {
                     ImageThumb(
                         attachment = attachment,
                         height = 200.dp,
                         onRetryUpload = onRetryUpload,
                         onCancelUpload = onCancelUpload,
-                        onOpen = { if (attachment.uploadStatus == UploadStatus.Uploaded) viewerIndex = index },
+                        onOpen = { if (attachment.uploadStatus == UploadStatus.Uploaded) viewerIndex = 0 },
                         onEnsureLocal = onDownload
+                    )
+                } else {
+                    VideoThumb(
+                        attachment = attachment,
+                        height = 200.dp,
+                        onRetryUpload = onRetryUpload,
+                        onCancelUpload = onCancelUpload,
+                        onDownload = onDownload
                     )
                 }
             }
-        }
-        if (videos.isNotEmpty()) {
-            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                videos.forEach { attachment ->
-                    VideoThumb(attachment = attachment, height = 200.dp, onRetryUpload = onRetryUpload, onCancelUpload = onCancelUpload, onDownload = onDownload)
-                }
+            media.size > 1 -> {
+                MediaCollage(
+                    media = media,
+                    onRetryUpload = onRetryUpload,
+                    onCancelUpload = onCancelUpload,
+                    onEnsureLocal = onDownload,
+                    onOpen = { albumOpen = true }
+                )
             }
         }
         if (docs.isNotEmpty()) {
@@ -547,10 +564,20 @@ fun AttachmentGrid(
             }
         }
     }
+
+    if (albumOpen && media.size > 1) {
+        MediaAlbumOverlay(
+            media = media,
+            onClose = { albumOpen = false },
+            onPick = { index -> viewerIndex = index },
+            onEnsureLocal = onDownload
+        )
+    }
+
     val openIndex = viewerIndex
-    if (openIndex != null && images.isNotEmpty()) {
-        val viewerFiles = remember(images) { images.map { it.toViewerFileItem() } }
-        val byId = remember(images) { images.associateBy { it.id } }
+    if (openIndex != null && media.isNotEmpty()) {
+        val viewerFiles = remember(media) { media.map { it.toViewerFileItem() } }
+        val byId = remember(media) { media.associateBy { it.id } }
         MediaPagerOverlay(
             files = viewerFiles,
             initialIndex = openIndex,
@@ -566,6 +593,166 @@ fun AttachmentGrid(
                     .onSuccess { openFile(context, it, attachment.mimeType) }
             }
         )
+    }
+}
+
+@Composable
+private fun MediaCollage(
+    media: List<Attachment>,
+    onRetryUpload: () -> Unit,
+    onCancelUpload: () -> Unit,
+    onEnsureLocal: suspend (Attachment) -> File,
+    onOpen: () -> Unit
+) {
+    val gap = 3.dp
+    val height = 200.dp
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(height)
+            .clip(RoundedCornerShape(FlesTheme.radius.lg))
+    ) {
+        when {
+            media.size == 2 -> Row(modifier = Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(gap)) {
+                MediaCell(media[0], onRetryUpload, onCancelUpload, onEnsureLocal, onOpen, modifier = Modifier.weight(1f).fillMaxHeight())
+                MediaCell(media[1], onRetryUpload, onCancelUpload, onEnsureLocal, onOpen, modifier = Modifier.weight(1f).fillMaxHeight())
+            }
+            media.size == 3 -> Row(modifier = Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(gap)) {
+                MediaCell(media[0], onRetryUpload, onCancelUpload, onEnsureLocal, onOpen, modifier = Modifier.weight(1f).fillMaxHeight())
+                Column(modifier = Modifier.weight(1f).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(gap)) {
+                    MediaCell(media[1], onRetryUpload, onCancelUpload, onEnsureLocal, onOpen, modifier = Modifier.weight(1f).fillMaxWidth())
+                    MediaCell(media[2], onRetryUpload, onCancelUpload, onEnsureLocal, onOpen, modifier = Modifier.weight(1f).fillMaxWidth())
+                }
+            }
+            else -> Column(modifier = Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(gap)) {
+                Row(modifier = Modifier.weight(1f).fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(gap)) {
+                    MediaCell(media[0], onRetryUpload, onCancelUpload, onEnsureLocal, onOpen, modifier = Modifier.weight(1f).fillMaxHeight())
+                    MediaCell(media[1], onRetryUpload, onCancelUpload, onEnsureLocal, onOpen, modifier = Modifier.weight(1f).fillMaxHeight())
+                }
+                Row(modifier = Modifier.weight(1f).fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(gap)) {
+                    MediaCell(media[2], onRetryUpload, onCancelUpload, onEnsureLocal, onOpen, modifier = Modifier.weight(1f).fillMaxHeight())
+                    MediaCell(
+                        media[3],
+                        onRetryUpload, onCancelUpload, onEnsureLocal, onOpen,
+                        overlayCount = if (media.size > 4) media.size - 4 else null,
+                        modifier = Modifier.weight(1f).fillMaxHeight()
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun MediaCell(
+    attachment: Attachment,
+    onRetryUpload: () -> Unit,
+    onCancelUpload: () -> Unit,
+    onEnsureLocal: suspend (Attachment) -> File,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    overlayCount: Int? = null
+) {
+    val colors = FlesTheme.colors
+    val isVideo = attachment.kind == FileKind.Video
+    val ready = attachment.uploadStatus == UploadStatus.Uploaded
+    val preview = rememberAttachmentBitmap(attachment, onEnsure = onEnsureLocal)
+    val videoLocalPath = if (isVideo) {
+        remember(attachment.id, attachment.localPath) {
+            attachment.localPath?.removePrefix("file://")?.takeIf { File(it).exists() }
+        }
+    } else null
+    val videoMeta = if (isVideo) rememberVideoMeta(videoLocalPath) else null
+    val videoThumb = videoMeta?.thumbnail
+
+    Box(
+        modifier = modifier
+            .background(if (isVideo) Color.Black else colors.muted)
+            .clickable(enabled = ready, onClick = onClick),
+        contentAlignment = Alignment.Center
+    ) {
+        when {
+            preview != null -> Image(bitmap = preview, contentDescription = attachment.fileName, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
+            videoThumb != null -> Image(bitmap = videoThumb, contentDescription = attachment.fileName, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
+        }
+        if (isVideo && overlayCount == null) {
+            Box(
+                modifier = Modifier.size(40.dp).clip(CircleShape).background(Color.Black.withAlpha(0.55f)),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(Icons.Filled.PlayArrow, null, tint = Color.White, modifier = Modifier.size(22.dp))
+            }
+        }
+        if (overlayCount != null) {
+            Box(
+                modifier = Modifier.fillMaxSize().background(Color.Black.withAlpha(0.55f)),
+                contentAlignment = Alignment.Center
+            ) {
+                Text("+$overlayCount", color = Color.White, fontSize = 22.sp, fontWeight = FontWeight.SemiBold)
+            }
+        }
+        if (attachment.uploadStatus != UploadStatus.Uploaded) {
+            UploadProgressPanel(
+                attachment = attachment,
+                onRetry = onRetryUpload,
+                onCancel = onCancelUpload,
+                modifier = Modifier.align(Alignment.BottomCenter).padding(4.dp)
+            )
+        }
+    }
+}
+
+@Composable
+private fun MediaAlbumOverlay(
+    media: List<Attachment>,
+    onClose: () -> Unit,
+    onPick: (Int) -> Unit,
+    onEnsureLocal: suspend (Attachment) -> File
+) {
+    Dialog(onDismissRequest = onClose, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(Color.Black.withAlpha(0.95f))
+                .statusBarsPadding()
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Box(
+                    modifier = Modifier.size(40.dp).clip(CircleShape).clickable(onClick = onClose),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(Icons.Filled.Close, null, tint = Color.White)
+                }
+                Text(
+                    "${media.size} ${if (media.size == 1) "item" else "itens"}",
+                    color = Color.White,
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.padding(start = 8.dp)
+                )
+            }
+            LazyVerticalGrid(
+                columns = GridCells.Fixed(3),
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = androidx.compose.foundation.layout.PaddingValues(2.dp),
+                horizontalArrangement = Arrangement.spacedBy(2.dp),
+                verticalArrangement = Arrangement.spacedBy(2.dp)
+            ) {
+                itemsIndexed(media, key = { _, a -> a.id }) { index, attachment ->
+                    MediaCell(
+                        attachment = attachment,
+                        onRetryUpload = {},
+                        onCancelUpload = {},
+                        onEnsureLocal = onEnsureLocal,
+                        onClick = { onPick(index) },
+                        modifier = Modifier.aspectRatio(1f).fillMaxWidth()
+                    )
+                }
+            }
+        }
     }
 }
 
