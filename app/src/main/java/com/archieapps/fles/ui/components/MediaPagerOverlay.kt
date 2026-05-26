@@ -336,7 +336,7 @@ private fun ZoomableImage(
                 translationX = offsetX
                 translationY = offsetY
             }
-            .transformable(transformState)
+            .transformable(state = transformState, canPan = { scale > 1f })
             .pointerInput(Unit) {
                 detectTapGestures(
                     onTap = { onTap() },

@@ -169,10 +169,16 @@ fun FilesToolbar(
                     border = BorderStroke(1.dp, if (favoritesOnly) Color(0x66EAB308) else colors.border),
                     modifier = Modifier.clickable(onClick = onFavoritesToggle)
                 ) {
-                    Row(modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Filled.Star, null, modifier = Modifier.size(12.dp), tint = if (favoritesOnly) Color(0xFFA16207) else colors.mutedForeground)
-                        Spacer(Modifier.width(6.dp))
-                        Text("Favoritos", color = if (favoritesOnly) Color(0xFFA16207) else colors.mutedForeground, fontSize = 12.sp, fontWeight = FontWeight.Medium)
+                    Box(
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            Icons.Filled.Star,
+                            contentDescription = "Favoritos",
+                            modifier = Modifier.size(14.dp),
+                            tint = if (favoritesOnly) Color(0xFFA16207) else colors.mutedForeground
+                        )
                     }
                 }
                 listOf(FileKind.Image, FileKind.Video).forEach { kind ->
