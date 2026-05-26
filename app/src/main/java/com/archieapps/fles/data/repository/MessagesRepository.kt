@@ -62,6 +62,7 @@ class MessagesRepository(
 ) {
     private companion object {
         const val UPLOAD_CHUNK_SIZE = 2 * 1024 * 1024
+        const val ATTACHMENT_BATCH_SIZE = 10
     }
 
     fun observeMessages(folderId: String): Flow<List<Message>> {
@@ -160,6 +161,20 @@ class MessagesRepository(
         require(trimmed.isNotBlank() || attachments.isNotEmpty()) { "Mensagem vazia" }
         attachments.forEach { AttachmentIo.validateFileSize(it.fileName, it.size) }
         requireFolderAccessible(folderId)
+        if (attachments.size <= ATTACHMENT_BATCH_SIZE) {
+            return createSingleMessage(folderId, trimmed, attachments)
+        }
+        val batches = attachments.chunked(ATTACHMENT_BATCH_SIZE)
+        var first: Message? = null
+        batches.forEachIndexed { index, batch ->
+            val batchContent = if (index == 0) trimmed else ""
+            val msg = createSingleMessage(folderId, batchContent, batch)
+            if (index == 0) first = msg
+        }
+        return first!!
+    }
+
+    private suspend fun createSingleMessage(folderId: String, content: String, attachments: List<PendingAttachment>): Message {
         val secure = channelsRepository.isSecure(folderId)
         val now = nowMs()
         val localId = UUID.randomUUID().toString()
@@ -169,7 +184,7 @@ class MessagesRepository(
             attachments.all { it.isImage } -> "image"
             else -> "document"
         }
-        val message = MessageEntity(localId, null, folderId, type, encryptForLocal(trimmed, secure), false, LocalSyncStatus.PendingCreate, null, now, now, null)
+        val message = MessageEntity(localId, null, folderId, type, encryptForLocal(content, secure), false, LocalSyncStatus.PendingCreate, null, now, now, null)
         messageDao.upsert(message)
         attachments.forEach { persistAttachment(localId, it, secure) }
         queueRepository.enqueue(
