@@ -1,6 +1,7 @@
 package com.archieapps.fles.di
 
 import android.content.Context
+import com.archieapps.fles.data.local.AppLockStorage
 import com.archieapps.fles.data.local.KeyStorage
 import com.archieapps.fles.data.local.SecureFolderStorage
 import com.archieapps.fles.data.local.db.FlesDatabase
@@ -24,6 +25,7 @@ class AppContainer(context: Context) {
     val database = FlesDatabase.create(appContext)
     val attachmentIo = AttachmentIo(context.applicationContext)
     val cryptoRepository = CryptoRepository(KeyStorage(context.applicationContext))
+    val appLockStorage = AppLockStorage(context.applicationContext)
     val secureFoldersRepository = SecureFoldersRepository(
         apiService = apiClient.apiService,
         cryptoRepository = cryptoRepository,

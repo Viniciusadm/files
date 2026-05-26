@@ -1,7 +1,6 @@
 package com.archieapps.fles
 
 import android.os.Bundle
-import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.animation.EnterTransition
@@ -11,6 +10,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -20,16 +20,21 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
-import androidx.navigation.NavHostController
+import androidx.fragment.app.FragmentActivity
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.ProcessLifecycleOwner
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.archieapps.fles.di.AppContainer
+import com.archieapps.fles.security.BiometricAuthenticator
 import com.archieapps.fles.ui.components.AppShell
 import com.archieapps.fles.ui.components.MainSection
 import com.archieapps.fles.ui.navigation.AppRoutes
+import com.archieapps.fles.ui.screens.AppLockScreen
 import com.archieapps.fles.ui.screens.FilesExplorerScreen
 import com.archieapps.fles.ui.screens.GalleryScreen
 import com.archieapps.fles.ui.screens.KeyScreen
@@ -42,6 +47,7 @@ import com.archieapps.fles.ui.screens.ThreadScreen
 import com.archieapps.fles.ui.state.UiState
 import com.archieapps.fles.ui.theme.FlesTheme
 import com.archieapps.fles.ui.components.openFile
+import com.archieapps.fles.ui.viewmodel.AppLockViewModel
 import com.archieapps.fles.ui.viewmodel.FilesViewModel
 import com.archieapps.fles.ui.viewmodel.KeyViewModel
 import com.archieapps.fles.ui.viewmodel.LoginViewModel
@@ -52,34 +58,88 @@ import com.archieapps.fles.ui.viewmodel.SessionState
 import com.archieapps.fles.ui.viewmodel.SessionViewModel
 import com.archieapps.fles.ui.viewmodel.ThreadViewModel
 
-class MainActivity : ComponentActivity() {
+class MainActivity : FragmentActivity() {
+
+    private lateinit var appLockViewModel: AppLockViewModel
+    private val lifecycleObserver = LifecycleEventObserver { _, event ->
+        when (event) {
+            Lifecycle.Event.ON_STOP -> appLockViewModel.onAppBackgrounded()
+            Lifecycle.Event.ON_START -> appLockViewModel.onAppForegrounded()
+            else -> Unit
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        val appContainer = (application as FlesApp).container
+        appLockViewModel = AppLockViewModel(applicationContext, appContainer.appLockStorage)
+        ProcessLifecycleOwner.get().lifecycle.addObserver(lifecycleObserver)
         setContent {
-            val appContainer = (application as FlesApp).container
             FlesTheme {
-                FlesAppRoot(appContainer)
+                FlesAppRoot(appContainer, appLockViewModel, this)
             }
         }
+    }
+
+    override fun onDestroy() {
+        ProcessLifecycleOwner.get().lifecycle.removeObserver(lifecycleObserver)
+        appLockViewModel.clear()
+        super.onDestroy()
     }
 }
 
 @Composable
-fun FlesAppRoot(appContainer: AppContainer) {
+fun FlesAppRoot(
+    appContainer: AppContainer,
+    appLockViewModel: AppLockViewModel,
+    activity: FragmentActivity
+) {
     val sessionViewModel = remember { SessionViewModel(appContainer.authRepository) }
     val sessionState by sessionViewModel.state.collectAsState()
+    val lockState by appLockViewModel.state.collectAsState()
+
+    DisposableEffect(sessionState) {
+        if (sessionState != SessionState.Authenticated) {
+            appLockViewModel.resetUnlocked()
+        }
+        onDispose { }
+    }
 
     when (sessionState) {
         SessionState.Loading -> LoadingScreen()
         SessionState.Unauthenticated -> AuthNavHost(
             appContainer = appContainer,
-            onAuthenticated = sessionViewModel::markAuthenticated
+            onAuthenticated = {
+                appLockViewModel.markUnlocked()
+                sessionViewModel.markAuthenticated()
+            }
         )
-        SessionState.Authenticated -> AuthenticatedNavHost(
-            appContainer = appContainer,
-            onLogout = sessionViewModel::logout
-        )
+        SessionState.Authenticated -> {
+            if (lockState.enabled && !lockState.unlocked) {
+                AppLockScreen(
+                    availability = lockState.availability,
+                    onUnlockClick = {
+                        BiometricAuthenticator.prompt(
+                            activity = activity,
+                            title = "Desbloquear aplicativo",
+                            subtitle = "Use sua biometria ou credencial do dispositivo",
+                            onSuccess = { appLockViewModel.markUnlocked() }
+                        )
+                    }
+                )
+            } else {
+                AuthenticatedNavHost(
+                    appContainer = appContainer,
+                    appLockViewModel = appLockViewModel,
+                    activity = activity,
+                    onLogout = {
+                        appLockViewModel.resetUnlocked()
+                        sessionViewModel.logout()
+                    }
+                )
+            }
+        }
     }
 }
 
@@ -138,6 +198,8 @@ private fun AuthNavHost(
 @Composable
 private fun AuthenticatedNavHost(
     appContainer: AppContainer,
+    appLockViewModel: AppLockViewModel,
+    activity: FragmentActivity,
     onLogout: () -> Unit
 ) {
     val navController = rememberNavController()
@@ -309,13 +371,26 @@ private fun AuthenticatedNavHost(
             }
         }
         composable(AppRoutes.Settings) {
+            val lockState by appLockViewModel.state.collectAsState()
             Shell(MainSection.Settings, navigateMessages, navigateGallery, navigateFiles, showBottomNav = false) {
                 SettingsScreen(
                     secureUnlocked = secureState.unlocked,
+                    appLockEnabled = lockState.enabled,
+                    appLockAvailability = lockState.availability,
                     onBack = { navController.popBackStack() },
                     onCreateChannel = createChannel,
                     onNavigateKey = { navController.navigate(AppRoutes.Key) },
                     onNavigateSecureFolders = { navController.navigate(AppRoutes.SecureFolders) },
+                    onEnableAppLock = {
+                        BiometricAuthenticator.prompt(
+                            activity = activity,
+                            title = "Ativar bloqueio do aplicativo",
+                            subtitle = "Confirme sua biometria ou credencial do dispositivo",
+                            onSuccess = { appLockViewModel.setEnabled(true) }
+                        )
+                    },
+                    onDisableAppLock = { appLockViewModel.setEnabled(false) },
+                    onRefreshAppLockAvailability = { appLockViewModel.refreshAvailability() },
                     onLogout = onLogout
                 )
             }
