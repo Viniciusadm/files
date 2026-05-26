@@ -12,8 +12,6 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.foundation.gestures.rememberTransformableState
-import androidx.compose.foundation.gestures.transformable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -25,10 +23,8 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.wrapContentWidth
@@ -79,7 +75,6 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -95,7 +90,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.asImageBitmap
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -113,6 +107,7 @@ import androidx.core.content.FileProvider
 import com.archieapps.fles.data.repository.AttachmentIo
 import com.archieapps.fles.ui.model.Attachment
 import com.archieapps.fles.ui.model.Channel
+import com.archieapps.fles.ui.model.FileItem
 import com.archieapps.fles.ui.model.FileKind
 import com.archieapps.fles.ui.model.ListItem
 import com.archieapps.fles.ui.model.Message
@@ -509,11 +504,20 @@ fun AttachmentGrid(
     val images = attachments.filter { it.kind == FileKind.Image }
     val videos = attachments.filter { it.kind == FileKind.Video }
     val docs = attachments.filter { it.kind != FileKind.Image && it.kind != FileKind.Video }
+    val context = LocalContext.current
+    var viewerIndex by remember { mutableStateOf<Int?>(null) }
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
         if (images.isNotEmpty()) {
             FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                images.forEach { attachment ->
-                    ImageThumb(attachment = attachment, height = 200.dp, onRetryUpload = onRetryUpload, onCancelUpload = onCancelUpload, onDownload = onDownload)
+                images.forEachIndexed { index, attachment ->
+                    ImageThumb(
+                        attachment = attachment,
+                        height = 200.dp,
+                        onRetryUpload = onRetryUpload,
+                        onCancelUpload = onCancelUpload,
+                        onOpen = { if (attachment.uploadStatus == UploadStatus.Uploaded) viewerIndex = index },
+                        onEnsureLocal = onDownload
+                    )
                 }
             }
         }
@@ -532,7 +536,49 @@ fun AttachmentGrid(
             }
         }
     }
+    val openIndex = viewerIndex
+    if (openIndex != null && images.isNotEmpty()) {
+        val viewerFiles = remember(images) { images.map { it.toViewerFileItem() } }
+        val byId = remember(images) { images.associateBy { it.id } }
+        MediaPagerOverlay(
+            files = viewerFiles,
+            initialIndex = openIndex,
+            onEnsureLocalFile = { fileItem ->
+                val attachment = byId[fileItem.id]
+                    ?: error("Attachment not found for ${fileItem.id}")
+                onDownload(attachment)
+            },
+            onClose = { viewerIndex = null },
+            onDownloadCurrent = { fileItem ->
+                val attachment = byId[fileItem.id] ?: return@MediaPagerOverlay
+                runCatching { onDownload(attachment) }
+                    .onSuccess { openFile(context, it, attachment.mimeType) }
+            }
+        )
+    }
 }
+
+private fun Attachment.toViewerFileItem(): FileItem = FileItem(
+    id = id,
+    name = fileName,
+    kind = kind,
+    size = size,
+    folderId = "",
+    folderName = "",
+    messageId = messageId,
+    isFavorite = false,
+    createdAt = createdAt,
+    url = url,
+    mimeType = mimeType,
+    compressed = compressed,
+    extension = extension,
+    previewColor = previewColor,
+    localPath = localPath,
+    previewLocalPath = previewLocalPath,
+    syncStatus = syncStatus,
+    lastError = lastError,
+    isSecure = false
+)
 
 @Composable
 private fun VideoThumb(
@@ -647,15 +693,16 @@ private fun VideoThumb(
 }
 
 @Composable
-private fun ImageThumb(attachment: Attachment, height: Dp, onRetryUpload: () -> Unit, onCancelUpload: () -> Unit, onDownload: suspend (Attachment) -> File) {
+private fun ImageThumb(
+    attachment: Attachment,
+    height: Dp,
+    onRetryUpload: () -> Unit,
+    onCancelUpload: () -> Unit,
+    onOpen: () -> Unit,
+    onEnsureLocal: suspend (Attachment) -> File
+) {
     val colors = FlesTheme.colors
-    val context = LocalContext.current
-    val scope = rememberCoroutineScope()
-    var open by remember { mutableStateOf(false) }
-    var viewerFile by remember(attachment.id) { mutableStateOf<File?>(null) }
-    var loading by remember { mutableStateOf(false) }
-    var loadFailed by remember(attachment.id) { mutableStateOf(false) }
-    val preview = rememberAttachmentBitmap(attachment, onEnsure = onDownload)
+    val preview = rememberAttachmentBitmap(attachment, onEnsure = onEnsureLocal)
     val compressed = attachment.compressed
     val ready = attachment.uploadStatus == UploadStatus.Uploaded
     Box(
@@ -665,17 +712,7 @@ private fun ImageThumb(attachment: Attachment, height: Dp, onRetryUpload: () -> 
             .clip(RoundedCornerShape(FlesTheme.radius.lg))
             .background(colors.muted)
             .border(BorderStroke(0.5.dp, colors.border), RoundedCornerShape(FlesTheme.radius.lg))
-            .clickable(enabled = ready) {
-                open = true
-                loading = true
-                loadFailed = false
-                scope.launch {
-                    runCatching { onDownload(attachment) }
-                        .onSuccess { viewerFile = it }
-                        .onFailure { loadFailed = true }
-                    loading = false
-                }
-            },
+            .clickable(enabled = ready, onClick = onOpen),
         contentAlignment = Alignment.Center
     ) {
         if (preview != null) {
@@ -696,23 +733,6 @@ private fun ImageThumb(attachment: Attachment, height: Dp, onRetryUpload: () -> 
                 modifier = Modifier.align(Alignment.BottomCenter).padding(6.dp)
             )
         }
-    }
-    if (open) {
-        ImageViewer(
-            attachment = attachment,
-            file = viewerFile,
-            loading = loading,
-            loadFailed = loadFailed,
-            onClose = {
-                open = false
-                viewerFile = null
-                loadFailed = false
-            },
-            onDownload = {
-                val file = viewerFile ?: runCatching { onDownload(attachment) }.getOrNull()
-                if (file != null) openFile(context, file, attachment.mimeType)
-            }
-        )
     }
 }
 
@@ -814,133 +834,6 @@ private fun UploadProgressPanel(
             }
             Text("Cancelar", modifier = Modifier.clickable { onCancel() }.padding(4.dp), color = colors.destructive, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
         }
-    }
-}
-
-@Composable
-private fun ImageViewer(
-    attachment: Attachment,
-    file: File?,
-    loading: Boolean,
-    loadFailed: Boolean,
-    onClose: () -> Unit,
-    onDownload: suspend () -> Unit
-) {
-    val scope = rememberCoroutineScope()
-    val bitmap = remember(file?.absolutePath) { file?.absolutePath?.let { BitmapFactory.decodeFile(it)?.asImageBitmap() } }
-    var downloading by remember { mutableStateOf(false) }
-    var scale by remember { mutableFloatStateOf(1f) }
-    var offsetX by remember { mutableFloatStateOf(0f) }
-    var offsetY by remember { mutableFloatStateOf(0f) }
-    val transformState = rememberTransformableState { zoomChange, panChange, _ ->
-        val nextScale = (scale * zoomChange).coerceIn(1f, 5f)
-        scale = nextScale
-        if (nextScale > 1f) {
-            offsetX += panChange.x
-            offsetY += panChange.y
-        } else {
-            offsetX = 0f
-            offsetY = 0f
-        }
-    }
-    Dialog(onDismissRequest = onClose, properties = DialogProperties(usePlatformDefaultWidth = false)) {
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(Color.Black.withAlpha(0.92f))
-        ) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .statusBarsPadding()
-                    .padding(horizontal = 16.dp, vertical = 8.dp),
-                horizontalArrangement = Arrangement.End,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                ViewerButton(
-                    icon = Icons.Filled.Download,
-                    busy = downloading,
-                    onClick = {
-                        if (downloading) return@ViewerButton
-                        downloading = true
-                        scope.launch {
-                            runCatching { onDownload() }
-                            downloading = false
-                        }
-                    }
-                )
-                Spacer(Modifier.width(8.dp))
-                ViewerButton(icon = Icons.Filled.Close, iconSize = 22.dp, onClick = onClose)
-            }
-            Box(modifier = Modifier.fillMaxWidth().weight(1f).padding(24.dp), contentAlignment = Alignment.Center) {
-                when {
-                    loading -> CircularProgressIndicator(color = Color.White)
-                    bitmap != null -> Image(
-                        bitmap = bitmap,
-                        contentDescription = attachment.fileName,
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .graphicsLayer {
-                                scaleX = scale
-                                scaleY = scale
-                                translationX = offsetX
-                                translationY = offsetY
-                            }
-                            .transformable(transformState)
-                            .pointerInput(Unit) {
-                                detectTapGestures(
-                                    onDoubleTap = {
-                                        if (scale > 1f) {
-                                            scale = 1f
-                                            offsetX = 0f
-                                            offsetY = 0f
-                                        } else {
-                                            scale = 2.5f
-                                        }
-                                    }
-                                )
-                            },
-                        contentScale = ContentScale.Fit
-                    )
-                    loadFailed -> Text("Falha ao carregar.", color = Color.White)
-                    else -> Text("Falha ao carregar.", color = Color.White)
-                }
-            }
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .navigationBarsPadding()
-                    .padding(horizontal = 16.dp, vertical = 8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                Text(attachment.fileName, modifier = Modifier.weight(1f), color = Color.White, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                AttachmentBadge(
-                    label = if (attachment.compressed) "Comprimida" else "Original",
-                    background = if (attachment.compressed) FlesTheme.colors.primary.withAlpha(0.85f) else Color.White.withAlpha(0.18f)
-                )
-            }
-        }
-    }
-}
-
-@Composable
-private fun ViewerButton(
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
-    iconSize: Dp = 20.dp,
-    busy: Boolean = false,
-    onClick: () -> Unit
-) {
-    Box(
-        modifier = Modifier
-            .size(40.dp)
-            .clip(RoundedCornerShape(FlesTheme.radius.full))
-            .background(Color.White.withAlpha(0.12f))
-            .clickable(onClick = onClick),
-        contentAlignment = Alignment.Center
-    ) {
-        if (busy) CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp, color = Color.White)
-        else Icon(icon, null, modifier = Modifier.size(iconSize), tint = Color.White)
     }
 }
 
