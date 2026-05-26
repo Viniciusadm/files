@@ -13,6 +13,7 @@ import com.archieapps.fles.ui.model.ListItem
 import com.archieapps.fles.ui.model.Message
 import com.archieapps.fles.ui.model.MessageType
 import com.archieapps.fles.ui.model.SyncStatus
+import com.archieapps.fles.ui.model.UploadStatus
 
 suspend fun RemoteChannel.toUi(cryptoRepository: CryptoRepository): Channel {
     return Channel(
@@ -76,7 +77,9 @@ suspend fun RemoteAttachment.toUi(cryptoRepository: CryptoRepository): Attachmen
 }
 
 fun Message.toFileItem(channel: Channel): List<FileItem> {
-    return attachments.map {
+    return attachments
+        .filter { it.uploadStatus == UploadStatus.Uploaded }
+        .map {
         FileItem(
             id = it.id,
             name = it.fileName,
