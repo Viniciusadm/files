@@ -18,6 +18,7 @@ import com.archieapps.fles.data.remote.CreateChecklistRequest
 import com.archieapps.fles.data.remote.CreateMessageRequest
 import com.archieapps.fles.data.remote.CreateUploadRequest
 import com.archieapps.fles.data.remote.MoveMessageRequest
+import com.archieapps.fles.data.remote.RenameAttachmentRequest
 import com.archieapps.fles.data.remote.RemoteAttachment
 import com.archieapps.fles.data.remote.RemoteListItem
 import com.archieapps.fles.data.remote.RemoteMessage
@@ -254,6 +255,51 @@ class MessagesRepository(
         queueRepository.enqueue(opType = "favorite", entity = "message", entityLocalId = id, parentLocalId = row.folderLocalId, dependsOnId = queueRepository.lastPendingOpId(id))
         scheduler.scheduleNow()
         return if (channelsRepository.isSecure(row.folderLocalId)) updated.toSecureUi() else updated.toUi(listItemDao.byMessage(id).map { it.toUi() }, attachmentDao.byMessage(id).map { it.toUi() })
+    }
+
+    suspend fun bulkDeleteMessages(ids: List<String>) {
+        ids.forEach { deleteMessage(it) }
+    }
+
+    suspend fun bulkMoveMessages(ids: List<String>, targetFolderId: String) {
+        ids.forEach { runCatching { moveMessage(it, targetFolderId) } }
+    }
+
+    suspend fun renameAttachment(attachmentLocalId: String, newName: String): Boolean {
+        val attachment = attachmentDao.byLocalId(attachmentLocalId) ?: return false
+        val message = messageDao.byLocalId(attachment.messageLocalId) ?: return false
+        val trimmed = newName.trim()
+        require(trimmed.isNotBlank()) { "Nome vazio" }
+        requireFolderAccessible(message.folderLocalId)
+        val secure = channelsRepository.isSecure(message.folderLocalId)
+        val now = nowMs()
+        attachmentDao.update(attachment.copy(
+            fileName = encryptForLocal(trimmed, secure),
+            syncStatus = LocalSyncStatus.PendingUpdate,
+            updatedAt = now,
+            lastError = null
+        ))
+        queueRepository.enqueue(
+            opType = "rename",
+            entity = "attachment",
+            entityLocalId = attachmentLocalId,
+            parentLocalId = attachment.messageLocalId,
+            dependsOnId = queueRepository.lastPendingOpId(attachmentLocalId)
+        )
+        scheduler.scheduleNow()
+        return true
+    }
+
+    suspend fun pushAttachmentRename(localId: String) {
+        val attachment = attachmentDao.byLocalId(localId) ?: return
+        val remoteId = attachment.remoteId ?: throw IllegalStateException("Anexo ainda sem remoteId")
+        val message = messageDao.byLocalId(attachment.messageLocalId) ?: throw IllegalStateException("Mensagem ausente")
+        val secure = channelsRepository.isSecure(message.folderLocalId)
+        val remoteName = remoteString(attachment.fileName, secure)
+        apiService.renameAttachment(remoteId, RenameAttachmentRequest(remoteName)).requireBody()
+        attachmentDao.byLocalId(localId)?.let {
+            attachmentDao.update(it.copy(syncStatus = LocalSyncStatus.Synced, lastError = null, updatedAt = nowMs()))
+        }
     }
 
     suspend fun moveMessage(id: String, targetFolderId: String): Message? {

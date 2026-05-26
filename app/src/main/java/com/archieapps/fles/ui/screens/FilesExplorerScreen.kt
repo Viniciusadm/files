@@ -24,6 +24,9 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
 import androidx.compose.material.icons.filled.ChevronRight
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.DriveFileMove
 import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.Settings
@@ -42,6 +45,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.archieapps.fles.ui.components.ConfirmDeleteDialog
 import com.archieapps.fles.ui.components.EmptyState
 import com.archieapps.fles.ui.components.FileDetailsDialog
 import com.archieapps.fles.ui.components.FileGridCard
@@ -51,6 +55,8 @@ import com.archieapps.fles.ui.components.FilesViewMode
 import com.archieapps.fles.ui.components.FolderAvatar
 import com.archieapps.fles.ui.components.FolderGridCard
 import com.archieapps.fles.ui.components.IconButtonBox
+import com.archieapps.fles.ui.components.MoveMessageDialog
+import com.archieapps.fles.ui.components.RenameFileDialog
 import com.archieapps.fles.ui.components.SharedSearchBar
 import com.archieapps.fles.ui.components.folderIcon
 import com.archieapps.fles.ui.model.Channel
@@ -68,11 +74,26 @@ fun FilesExplorerScreen(
     onOpenFolder: (String) -> Unit,
     onQueryChange: (String) -> Unit,
     onEnsureLocalFile: suspend (FileItem) -> File,
-    onOpenFile: suspend (FileItem, File) -> Unit
+    onOpenFile: suspend (FileItem, File) -> Unit,
+    onToggleSelection: (String) -> Unit = {},
+    onClearSelection: () -> Unit = {},
+    onBulkDelete: () -> Unit = {},
+    onBulkMove: (String) -> Unit = {},
+    onDeleteFile: (String) -> Unit = {},
+    onMoveFile: (String, String) -> Unit = { _, _ -> },
+    onToggleFavorite: (String) -> Unit = {},
+    onRenameFile: (String, String) -> Unit = { _, _ -> }
 ) {
     val colors = FlesTheme.colors
     var selectedFile by remember { mutableStateOf<FileItem?>(null) }
     var mode by remember { mutableStateOf(FilesViewMode.List) }
+    var bulkMoveOpen by remember { mutableStateOf(false) }
+    var bulkDeleteConfirm by remember { mutableStateOf(false) }
+    var fileMoveTarget by remember { mutableStateOf<FileItem?>(null) }
+    var fileDeleteTarget by remember { mutableStateOf<FileItem?>(null) }
+    var fileRenameTarget by remember { mutableStateOf<FileItem?>(null) }
+    val selectionMode = state.selectionMode
+    val selectedIds = state.selectedIds
 
     val currentFolderId = state.folder?.id
     val isRoot = currentFolderId == null
@@ -86,20 +107,29 @@ fun FilesExplorerScreen(
     val files = if (isRoot) emptyList() else state.files
 
     Column(modifier = Modifier.fillMaxSize().background(colors.background)) {
-        ExplorerHeader(
-            folder = state.folder,
-            onOpenSettings = onOpenSettings,
-            onBack = onBack
-        )
-        Box(modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp)) {
-            SharedSearchBar(
-                query = state.query,
-                onQueryChange = onQueryChange,
-                placeholder = if (isRoot) "Buscar pasta..." else "Buscar nesta pasta..."
+        if (selectionMode) {
+            SelectionActionBar(
+                count = selectedIds.size,
+                onClose = onClearSelection,
+                onDelete = { bulkDeleteConfirm = true },
+                onMove = { bulkMoveOpen = true }
             )
-        }
-        Box(modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp).padding(bottom = 8.dp)) {
-            FilesViewControls(mode = mode, onModeChange = { mode = it }, onSortClick = {})
+        } else {
+            ExplorerHeader(
+                folder = state.folder,
+                onOpenSettings = onOpenSettings,
+                onBack = onBack
+            )
+            Box(modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp)) {
+                SharedSearchBar(
+                    query = state.query,
+                    onQueryChange = onQueryChange,
+                    placeholder = if (isRoot) "Buscar pasta..." else "Buscar nesta pasta..."
+                )
+            }
+            Box(modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp).padding(bottom = 8.dp)) {
+                FilesViewControls(mode = mode, onModeChange = { mode = it }, onSortClick = {})
+            }
         }
         if (state.loading) {
             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -125,8 +155,22 @@ fun FilesExplorerScreen(
                 gridItems(subfolders, key = { "f-${it.id}" }, span = { GridItemSpan(1) }) { channel ->
                     FolderGridCard(channel = channel, onClick = { onOpenFolder(channel.id) })
                 }
-                gridItems(files, key = { "file-${it.id}" }, span = { GridItemSpan(1) }) {
-                    FileGridCard(file = it, onEnsureLocalFile = onEnsureLocalFile, onClick = { selectedFile = it })
+                gridItems(files, key = { "file-${it.id}" }, span = { GridItemSpan(1) }) { file ->
+                    val isSelected = selectedIds.contains(file.messageId)
+                    FileGridCard(
+                        file = file,
+                        onEnsureLocalFile = onEnsureLocalFile,
+                        onClick = {
+                            if (selectionMode) onToggleSelection(file.messageId) else selectedFile = file
+                        },
+                        onLongClick = { onToggleSelection(file.messageId) },
+                        selected = isSelected,
+                        selectionMode = selectionMode,
+                        onDelete = { fileDeleteTarget = file },
+                        onMove = { fileMoveTarget = file },
+                        onToggleFavorite = { onToggleFavorite(file.messageId) },
+                        onRename = { fileRenameTarget = file }
+                    )
                 }
             }
         } else {
@@ -138,8 +182,21 @@ fun FilesExplorerScreen(
                 items(subfolders, key = { "f-${it.id}" }) { channel ->
                     FolderRow(channel = channel, onClick = { onOpenFolder(channel.id) })
                 }
-                items(files, key = { "file-${it.id}" }) {
-                    FileListRow(file = it, onClick = { selectedFile = it })
+                items(files, key = { "file-${it.id}" }) { file ->
+                    val isSelected = selectedIds.contains(file.messageId)
+                    FileListRow(
+                        file = file,
+                        onClick = {
+                            if (selectionMode) onToggleSelection(file.messageId) else selectedFile = file
+                        },
+                        onLongClick = { onToggleSelection(file.messageId) },
+                        selected = isSelected,
+                        selectionMode = selectionMode,
+                        onDelete = { fileDeleteTarget = file },
+                        onMove = { fileMoveTarget = file },
+                        onToggleFavorite = { onToggleFavorite(file.messageId) },
+                        onRename = { fileRenameTarget = file }
+                    )
                 }
             }
         }
@@ -151,6 +208,89 @@ fun FilesExplorerScreen(
             onEnsureLocalFile = onEnsureLocalFile,
             onOpenFile = onOpenFile
         )
+    }
+
+    val moveChannels = remember(allChannels, state.folder?.id) {
+        allChannels.filter { !it.isSecure && it.id != state.folder?.id }
+    }
+
+    if (bulkMoveOpen) {
+        MoveMessageDialog(
+            channels = moveChannels,
+            onClose = { bulkMoveOpen = false },
+            onMove = { folderId ->
+                bulkMoveOpen = false
+                onBulkMove(folderId)
+            }
+        )
+    }
+
+    if (bulkDeleteConfirm) {
+        ConfirmDeleteDialog(
+            title = "Excluir arquivos?",
+            message = "${selectedIds.size} arquivo(s) serão excluídos. Esta ação não pode ser desfeita.",
+            onClose = { bulkDeleteConfirm = false },
+            onConfirm = onBulkDelete
+        )
+    }
+
+    fileMoveTarget?.let { file ->
+        MoveMessageDialog(
+            channels = moveChannels,
+            onClose = { fileMoveTarget = null },
+            onMove = { folderId ->
+                fileMoveTarget = null
+                onMoveFile(file.messageId, folderId)
+            }
+        )
+    }
+
+    fileDeleteTarget?.let { file ->
+        ConfirmDeleteDialog(
+            title = "Excluir arquivo?",
+            message = "\"${file.name}\" será excluído. Esta ação não pode ser desfeita.",
+            onClose = { fileDeleteTarget = null },
+            onConfirm = { onDeleteFile(file.messageId) }
+        )
+    }
+
+    fileRenameTarget?.let { file ->
+        RenameFileDialog(
+            initialName = file.name,
+            onClose = { fileRenameTarget = null },
+            onConfirm = { newName -> onRenameFile(file.id, newName) }
+        )
+    }
+}
+
+@Composable
+private fun SelectionActionBar(
+    count: Int,
+    onClose: () -> Unit,
+    onDelete: () -> Unit,
+    onMove: () -> Unit
+) {
+    val colors = FlesTheme.colors
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(colors.background)
+            .border(BorderStroke(0.5.dp, colors.border))
+            .padding(horizontal = 12.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        IconButtonBox(Icons.Filled.Close, onClick = onClose, iconSize = 22.dp)
+        Spacer(Modifier.width(8.dp))
+        Text(
+            "$count selecionado(s)",
+            modifier = Modifier.weight(1f),
+            color = colors.foreground,
+            fontSize = 14.sp,
+            fontWeight = FontWeight.SemiBold
+        )
+        IconButtonBox(Icons.Filled.DriveFileMove, onClick = onMove, iconSize = 22.dp)
+        Spacer(Modifier.width(4.dp))
+        IconButtonBox(Icons.Filled.Delete, onClick = onDelete, iconSize = 22.dp)
     }
 }
 

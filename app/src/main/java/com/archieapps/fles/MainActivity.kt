@@ -313,7 +313,7 @@ private fun AuthenticatedNavHost(
         }
         composable(AppRoutes.Gallery) {
             val filesViewModel = remember(secureState.unlocked) {
-                FilesViewModel(null, false, appContainer.channelsRepository, appContainer.filesRepository)
+                FilesViewModel(null, false, appContainer.channelsRepository, appContainer.filesRepository, appContainer.messagesRepository)
             }
             val state by filesViewModel.state.collectAsState()
             val context = LocalContext.current
@@ -334,7 +334,7 @@ private fun AuthenticatedNavHost(
         }
         composable(AppRoutes.Files) {
             val filesViewModel = remember(secureState.unlocked) {
-                FilesViewModel(null, false, appContainer.channelsRepository, appContainer.filesRepository)
+                FilesViewModel(null, false, appContainer.channelsRepository, appContainer.filesRepository, appContainer.messagesRepository)
             }
             val state by filesViewModel.state.collectAsState()
             val context = LocalContext.current
@@ -347,7 +347,15 @@ private fun AuthenticatedNavHost(
                     onOpenFolder = { navController.navigate(AppRoutes.folderFiles(it)) },
                     onQueryChange = filesViewModel::onQueryChange,
                     onEnsureLocalFile = filesViewModel::ensureLocalFile,
-                    onOpenFile = { file, localFile -> openFile(context, localFile, file.mimeType).getOrThrow() }
+                    onOpenFile = { file, localFile -> openFile(context, localFile, file.mimeType).getOrThrow() },
+                    onToggleSelection = filesViewModel::toggleSelection,
+                    onClearSelection = filesViewModel::clearSelection,
+                    onBulkDelete = filesViewModel::bulkDelete,
+                    onBulkMove = filesViewModel::bulkMove,
+                    onDeleteFile = filesViewModel::deleteFile,
+                    onMoveFile = filesViewModel::moveFile,
+                    onToggleFavorite = filesViewModel::toggleFavorite,
+                    onRenameFile = filesViewModel::renameFile
                 )
             }
         }
@@ -357,7 +365,7 @@ private fun AuthenticatedNavHost(
         ) { backStackEntry ->
             val folderId = backStackEntry.arguments?.getString("folderId").orEmpty()
             val filesViewModel = remember(folderId, secureState.unlocked) {
-                FilesViewModel(folderId, false, appContainer.channelsRepository, appContainer.filesRepository)
+                FilesViewModel(folderId, false, appContainer.channelsRepository, appContainer.filesRepository, appContainer.messagesRepository)
             }
             val state by filesViewModel.state.collectAsState()
             val context = LocalContext.current
@@ -370,7 +378,15 @@ private fun AuthenticatedNavHost(
                     onOpenFolder = { navController.navigate(AppRoutes.folderFiles(it)) },
                     onQueryChange = filesViewModel::onQueryChange,
                     onEnsureLocalFile = filesViewModel::ensureLocalFile,
-                    onOpenFile = { file, localFile -> openFile(context, localFile, file.mimeType).getOrThrow() }
+                    onOpenFile = { file, localFile -> openFile(context, localFile, file.mimeType).getOrThrow() },
+                    onToggleSelection = filesViewModel::toggleSelection,
+                    onClearSelection = filesViewModel::clearSelection,
+                    onBulkDelete = filesViewModel::bulkDelete,
+                    onBulkMove = filesViewModel::bulkMove,
+                    onDeleteFile = filesViewModel::deleteFile,
+                    onMoveFile = filesViewModel::moveFile,
+                    onToggleFavorite = filesViewModel::toggleFavorite,
+                    onRenameFile = filesViewModel::renameFile
                 )
             }
         }

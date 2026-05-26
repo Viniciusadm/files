@@ -1360,7 +1360,7 @@ private fun CreateListDialog(onClose: () -> Unit, onCreate: (String, List<String
 }
 
 @Composable
-private fun MoveMessageDialog(channels: List<Channel>, onClose: () -> Unit, onMove: (String) -> Unit) {
+fun MoveMessageDialog(channels: List<Channel>, onClose: () -> Unit, onMove: (String) -> Unit) {
     AlertDialog(
         onDismissRequest = onClose,
         title = { Text("Mover para...") },

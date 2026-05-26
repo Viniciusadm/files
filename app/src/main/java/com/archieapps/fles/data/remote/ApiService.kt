@@ -124,6 +124,12 @@ interface ApiService {
         @Path("itemId") itemId: String
     ): ApiEnvelope<Unit>
 
+    @PATCH("attachments/{id}/rename")
+    suspend fun renameAttachment(
+        @Path("id") id: String,
+        @Body request: RenameAttachmentRequest
+    ): ApiEnvelope<RemoteAttachment>
+
     @GET
     suspend fun download(@Url url: String): ResponseBody
 }
@@ -266,6 +272,10 @@ data class CreateMessageRequest(
 
 data class MoveMessageRequest(
     val targetFolderId: String
+)
+
+data class RenameAttachmentRequest(
+    val name: String
 )
 
 data class CreateChecklistRequest(

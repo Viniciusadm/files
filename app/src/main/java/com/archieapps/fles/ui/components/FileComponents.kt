@@ -5,7 +5,9 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -26,6 +28,12 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Archive
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.DriveFileMove
+import androidx.compose.material.icons.filled.DriveFileRenameOutline
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.StarOutline
 import androidx.compose.material.icons.filled.AudioFile
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Code
@@ -46,8 +54,12 @@ import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.TableChart
 import androidx.compose.material.icons.filled.ViewList
 import androidx.compose.material.icons.filled.Videocam
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -240,12 +252,20 @@ fun FilesViewControls(
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun FileGridCard(
     file: FileItem,
     modifier: Modifier = Modifier,
     onEnsureLocalFile: (suspend (FileItem) -> File)? = null,
-    onClick: () -> Unit = {}
+    onClick: () -> Unit = {},
+    onLongClick: () -> Unit = {},
+    selected: Boolean = false,
+    selectionMode: Boolean = false,
+    onDelete: (() -> Unit)? = null,
+    onMove: (() -> Unit)? = null,
+    onToggleFavorite: (() -> Unit)? = null,
+    onRename: (() -> Unit)? = null
 ) {
     val colors = FlesTheme.colors
     val style = kindStyle(file.kind)
@@ -254,13 +274,18 @@ fun FileGridCard(
         file.localPath?.removePrefix("file://")?.let { File(it).takeIf { f -> f.exists() }?.absolutePath }
     } else null
     val videoMeta = if (file.kind == FileKind.Video) rememberVideoMeta(videoLocalPath) else null
+    var menuOpen by remember { mutableStateOf(false) }
     Column(
         modifier = modifier
             .shadow(1.dp, RoundedCornerShape(FlesTheme.radius.x2l))
             .clip(RoundedCornerShape(FlesTheme.radius.x2l))
             .background(colors.card)
-            .border(1.dp, colors.border, RoundedCornerShape(FlesTheme.radius.x2l))
-            .clickable(onClick = onClick)
+            .border(
+                width = if (selected) 2.dp else 1.dp,
+                color = if (selected) colors.primary else colors.border,
+                shape = RoundedCornerShape(FlesTheme.radius.x2l)
+            )
+            .combinedClickable(onClick = onClick, onLongClick = onLongClick)
     ) {
         Box(
             modifier = Modifier
@@ -345,8 +370,41 @@ fun FileGridCard(
                         Icon(Icons.Filled.Star, null, modifier = Modifier.size(14.dp), tint = colors.favorite)
                     }
                 }
-                Box(modifier = Modifier.size(24.dp).clip(CircleShape).background(colors.background.withAlpha(0.9f)), contentAlignment = Alignment.Center) {
-                    Icon(Icons.Filled.MoreVert, null, modifier = Modifier.size(14.dp), tint = colors.foreground)
+                if (!selectionMode) {
+                    Box {
+                        Box(
+                            modifier = Modifier
+                                .size(24.dp)
+                                .clip(CircleShape)
+                                .background(colors.background.withAlpha(0.9f))
+                                .clickable { menuOpen = true },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(Icons.Filled.MoreVert, null, modifier = Modifier.size(14.dp), tint = colors.foreground)
+                        }
+                        FileActionsMenu(
+                            expanded = menuOpen,
+                            onDismiss = { menuOpen = false },
+                            isFavorite = file.isFavorite,
+                            onDelete = onDelete,
+                            onMove = onMove,
+                            onToggleFavorite = onToggleFavorite,
+                            onRename = onRename
+                        )
+                    }
+                }
+            }
+            if (selected) {
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.TopStart)
+                        .padding(8.dp)
+                        .size(28.dp)
+                        .clip(CircleShape)
+                        .background(colors.primary),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(Icons.Filled.Check, null, modifier = Modifier.size(18.dp), tint = Color.White)
                 }
             }
         }
@@ -519,9 +577,22 @@ fun GalleryFolderCard(
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
-fun FileListRow(file: FileItem, modifier: Modifier = Modifier, onClick: () -> Unit = {}) {
+fun FileListRow(
+    file: FileItem,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit = {},
+    onLongClick: () -> Unit = {},
+    selected: Boolean = false,
+    selectionMode: Boolean = false,
+    onDelete: (() -> Unit)? = null,
+    onMove: (() -> Unit)? = null,
+    onToggleFavorite: (() -> Unit)? = null,
+    onRename: (() -> Unit)? = null
+) {
     val colors = FlesTheme.colors
+    var menuOpen by remember { mutableStateOf(false) }
     val videoLocalPath = if (file.kind == FileKind.Video) {
         file.localPath?.removePrefix("file://")?.let { File(it).takeIf { f -> f.exists() }?.absolutePath }
     } else null
@@ -530,11 +601,21 @@ fun FileListRow(file: FileItem, modifier: Modifier = Modifier, onClick: () -> Un
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .clickable(onClick = onClick)
-            .border(BorderStroke(0.5.dp, colors.border))
+            .combinedClickable(onClick = onClick, onLongClick = onLongClick)
+            .background(if (selected) colors.primary.withAlpha(0.08f) else Color.Transparent)
+            .border(BorderStroke(0.5.dp, if (selected) colors.primary else colors.border))
             .padding(horizontal = 12.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
+        if (selected) {
+            Box(
+                modifier = Modifier.size(20.dp).clip(CircleShape).background(colors.primary),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(Icons.Filled.Check, null, modifier = Modifier.size(14.dp), tint = Color.White)
+            }
+            Spacer(Modifier.width(10.dp))
+        }
         val videoThumb = videoMeta?.thumbnail
         when {
             videoThumb != null -> Box(
@@ -574,8 +655,129 @@ fun FileListRow(file: FileItem, modifier: Modifier = Modifier, onClick: () -> Un
             Icon(Icons.Filled.Star, null, modifier = Modifier.size(14.dp), tint = colors.favorite)
             Spacer(Modifier.width(12.dp))
         }
-        Icon(Icons.Filled.MoreVert, null, modifier = Modifier.size(16.dp), tint = colors.foreground)
+        if (!selectionMode) {
+            Box {
+                Icon(
+                    Icons.Filled.MoreVert,
+                    null,
+                    modifier = Modifier
+                        .size(20.dp)
+                        .clip(CircleShape)
+                        .clickable { menuOpen = true }
+                        .padding(2.dp),
+                    tint = colors.foreground
+                )
+                FileActionsMenu(
+                    expanded = menuOpen,
+                    onDismiss = { menuOpen = false },
+                    isFavorite = file.isFavorite,
+                    onDelete = onDelete,
+                    onMove = onMove,
+                    onToggleFavorite = onToggleFavorite,
+                    onRename = onRename
+                )
+            }
+        }
     }
+}
+
+@Composable
+private fun FileActionsMenu(
+    expanded: Boolean,
+    onDismiss: () -> Unit,
+    isFavorite: Boolean,
+    onDelete: (() -> Unit)?,
+    onMove: (() -> Unit)?,
+    onToggleFavorite: (() -> Unit)?,
+    onRename: (() -> Unit)?
+) {
+    val colors = FlesTheme.colors
+    DropdownMenu(expanded = expanded, onDismissRequest = onDismiss) {
+        if (onToggleFavorite != null) {
+            DropdownMenuItem(
+                text = { Text(if (isFavorite) "Desfavoritar" else "Favoritar") },
+                leadingIcon = { Icon(if (isFavorite) Icons.Filled.StarOutline else Icons.Filled.Star, null, tint = colors.favorite) },
+                onClick = { onDismiss(); onToggleFavorite() }
+            )
+        }
+        if (onRename != null) {
+            DropdownMenuItem(
+                text = { Text("Renomear") },
+                leadingIcon = { Icon(Icons.Filled.DriveFileRenameOutline, null, tint = colors.primary) },
+                onClick = { onDismiss(); onRename() }
+            )
+        }
+        if (onMove != null) {
+            DropdownMenuItem(
+                text = { Text("Mover") },
+                leadingIcon = { Icon(Icons.Filled.DriveFileMove, null, tint = colors.primary) },
+                onClick = { onDismiss(); onMove() }
+            )
+        }
+        if (onDelete != null) {
+            DropdownMenuItem(
+                text = { Text("Excluir", color = colors.destructive) },
+                leadingIcon = { Icon(Icons.Filled.Delete, null, tint = colors.destructive) },
+                onClick = { onDismiss(); onDelete() }
+            )
+        }
+    }
+}
+
+@Composable
+fun RenameFileDialog(
+    initialName: String,
+    onClose: () -> Unit,
+    onConfirm: (String) -> Unit
+) {
+    var value by remember(initialName) { mutableStateOf(initialName) }
+    AlertDialog(
+        onDismissRequest = onClose,
+        title = { Text("Renomear arquivo") },
+        text = {
+            OutlinedTextField(
+                value = value,
+                onValueChange = { value = it },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth()
+            )
+        },
+        confirmButton = {
+            AppButton(
+                text = "Salvar",
+                onClick = {
+                    val trimmed = value.trim()
+                    if (trimmed.isNotBlank()) {
+                        onConfirm(trimmed)
+                        onClose()
+                    }
+                }
+            )
+        },
+        dismissButton = { AppButton("Cancelar", variant = AppButtonVariant.Ghost, onClick = onClose) }
+    )
+}
+
+@Composable
+fun ConfirmDeleteDialog(
+    title: String,
+    message: String,
+    onClose: () -> Unit,
+    onConfirm: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onClose,
+        title = { Text(title) },
+        text = { Text(message) },
+        confirmButton = {
+            AppButton(
+                text = "Excluir",
+                variant = AppButtonVariant.Destructive,
+                onClick = { onClose(); onConfirm() }
+            )
+        },
+        dismissButton = { AppButton("Cancelar", variant = AppButtonVariant.Ghost, onClick = onClose) }
+    )
 }
 
 @Composable

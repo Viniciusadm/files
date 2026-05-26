@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.archieapps.fles.data.repository.ChannelsRepository
 import com.archieapps.fles.data.repository.FilesRepository
+import com.archieapps.fles.data.repository.MessagesRepository
 import com.archieapps.fles.ui.components.FilesViewMode
 import com.archieapps.fles.ui.model.Channel
 import com.archieapps.fles.ui.model.FileItem
@@ -20,7 +21,8 @@ class FilesViewModel(
     private val folderId: String?,
     favoritesOnlyInitial: Boolean,
     private val channelsRepository: ChannelsRepository,
-    private val filesRepository: FilesRepository
+    private val filesRepository: FilesRepository,
+    private val messagesRepository: MessagesRepository
 ) : ViewModel() {
     private val _state = MutableStateFlow(FilesUiState(favoritesOnly = favoritesOnlyInitial, loading = true))
     val state: StateFlow<FilesUiState> = _state.asStateFlow()
@@ -87,6 +89,74 @@ class FilesViewModel(
         _action.value = null
     }
 
+    fun toggleSelection(messageId: String) {
+        _state.update { current ->
+            val next = current.selectedIds.toMutableSet().apply {
+                if (!add(messageId)) remove(messageId)
+            }
+            current.copy(selectedIds = next)
+        }
+    }
+
+    fun clearSelection() {
+        _state.update { it.copy(selectedIds = emptySet()) }
+    }
+
+    fun bulkDelete() {
+        val ids = _state.value.selectedIds.toList()
+        if (ids.isEmpty()) return
+        viewModelScope.launch {
+            runCatching { messagesRepository.bulkDeleteMessages(ids) }
+                .onSuccess { _action.value = FileActionState("${ids.size} arquivo(s) excluído(s).") }
+                .onFailure { _action.value = FileActionState(it.userMessage(), isError = true) }
+            clearSelection()
+        }
+    }
+
+    fun bulkMove(targetFolderId: String) {
+        val ids = _state.value.selectedIds.toList()
+        if (ids.isEmpty()) return
+        viewModelScope.launch {
+            runCatching { messagesRepository.bulkMoveMessages(ids, targetFolderId) }
+                .onSuccess { _action.value = FileActionState("${ids.size} arquivo(s) movido(s).") }
+                .onFailure { _action.value = FileActionState(it.userMessage(), isError = true) }
+            clearSelection()
+        }
+    }
+
+    fun deleteFile(messageId: String) {
+        viewModelScope.launch {
+            runCatching { messagesRepository.deleteMessage(messageId) }
+                .onSuccess { _action.value = FileActionState("Arquivo excluído.") }
+                .onFailure { _action.value = FileActionState(it.userMessage(), isError = true) }
+        }
+    }
+
+    fun moveFile(messageId: String, targetFolderId: String) {
+        viewModelScope.launch {
+            runCatching { messagesRepository.moveMessage(messageId, targetFolderId) }
+                .onSuccess { _action.value = FileActionState("Arquivo movido.") }
+                .onFailure { _action.value = FileActionState(it.userMessage(), isError = true) }
+        }
+    }
+
+    fun toggleFavorite(messageId: String) {
+        viewModelScope.launch {
+            runCatching { messagesRepository.toggleFavorite(messageId) }
+                .onFailure { _action.value = FileActionState(it.userMessage(), isError = true) }
+        }
+    }
+
+    fun renameFile(attachmentId: String, newName: String) {
+        val trimmed = newName.trim()
+        if (trimmed.isBlank()) return
+        viewModelScope.launch {
+            runCatching { messagesRepository.renameAttachment(attachmentId, trimmed) }
+                .onSuccess { _action.value = FileActionState("Arquivo renomeado.") }
+                .onFailure { _action.value = FileActionState(it.userMessage(), isError = true) }
+        }
+    }
+
     suspend fun downloadToCache(file: FileItem): File {
         return filesRepository.downloadToCache(file)
     }
@@ -113,9 +183,11 @@ data class FilesUiState(
     val loading: Boolean = false,
     val error: String? = null,
     val galleryGroupMode: GalleryGroupMode = GalleryGroupMode.Folders,
-    val selectedGalleryFolderId: String? = null
+    val selectedGalleryFolderId: String? = null,
+    val selectedIds: Set<String> = emptySet()
 ) {
     val isEmpty: Boolean = !loading && error == null && files.isEmpty()
+    val selectionMode: Boolean = selectedIds.isNotEmpty()
 }
 
 data class FileActionState(
