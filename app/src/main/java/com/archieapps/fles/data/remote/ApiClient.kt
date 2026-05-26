@@ -12,6 +12,9 @@ class ApiClient(context: Context) {
 
     private val okHttpClient = OkHttpClient.Builder()
         .addInterceptor(AuthInterceptor(tokenStorage))
+        // Reabsorve 429/503 (Retry-After) e espaça as chamadas abaixo do limite do
+        // backend (throttle:files = 240/min), deixando folga para os downloads do Coil.
+        .addInterceptor(RateLimitInterceptor(permitsPerMinute = 180))
         .build()
 
     private val retrofit = Retrofit.Builder()

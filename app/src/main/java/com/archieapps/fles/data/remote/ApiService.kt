@@ -11,6 +11,7 @@ import retrofit2.http.Part
 import retrofit2.http.PartMap
 import retrofit2.http.Path
 import retrofit2.http.POST
+import retrofit2.http.Query
 import retrofit2.http.Url
 import okhttp3.ResponseBody
 
@@ -50,6 +51,12 @@ interface ApiService {
 
     @GET("folders/{folderId}/messages")
     suspend fun messages(@Path("folderId") folderId: String): ApiEnvelope<List<RemoteMessage>>
+
+    @GET("messages/sync")
+    suspend fun messagesSync(
+        @Query("since") since: String?,
+        @Query("cursor") cursor: String?
+    ): ApiEnvelope<RemoteSyncPage>
 
     @POST("messages")
     suspend fun createMessage(@Body request: CreateMessageRequest): ApiEnvelope<RemoteMessage>
@@ -233,7 +240,15 @@ data class RemoteMessage(
     val attachments: List<RemoteAttachment>?,
     val isFavorite: Any?,
     val createdAt: String?,
-    val updatedAt: String?
+    val updatedAt: String?,
+    val deletedAt: String? = null
+)
+
+/** Página do endpoint de sync em lote (substitui o N+1 de uma chamada por pasta). */
+data class RemoteSyncPage(
+    val messages: List<RemoteMessage>? = null,
+    val nextCursor: String? = null,
+    val syncedAt: String? = null
 )
 
 data class CreateUploadRequest(

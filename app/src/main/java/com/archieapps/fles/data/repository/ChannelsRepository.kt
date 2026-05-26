@@ -58,6 +58,10 @@ class ChannelsRepository(
         return channelDao.byLocalId(localId)?.remoteId
     }
 
+    suspend fun getLocalId(remoteId: String): String? {
+        return channelDao.byRemoteId(remoteId)?.localId
+    }
+
     suspend fun isSecure(localId: String): Boolean {
         return channelDao.byLocalId(localId)?.isSecure == true
     }

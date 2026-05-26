@@ -213,6 +213,9 @@ interface SyncStateDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsert(state: SyncStateEntity)
 
+    @Query("SELECT * FROM sync_state WHERE entity = :entity LIMIT 1")
+    suspend fun byEntity(entity: String): SyncStateEntity?
+
     @Query("DELETE FROM sync_state")
     suspend fun clear()
 }

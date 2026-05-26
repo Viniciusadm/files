@@ -24,6 +24,10 @@ class SyncEngine(
 ) {
     @Volatile private var running = false
 
+    private companion object {
+        const val MESSAGES_SYNC_KEY = "messages:all"
+    }
+
     init {
         queueDao.observePendingCount().onEach { statusStore.setPending(it) }.launchIn(kotlinx.coroutines.GlobalScope)
         networkMonitor.online.onEach {
@@ -49,11 +53,12 @@ class SyncEngine(
             drainQueue()
             channelsRepository.refreshFromRemote()
             syncStateDao.upsert(SyncStateEntity("channels", nowMs(), null))
-            (channelsRepository.getChannels() + channelsRepository.getSecureChannels()).forEach { channel ->
-                runCatching {
-                    messagesRepository.refreshMessagesFromRemote(channel.id)
-                    syncStateDao.upsert(SyncStateEntity("messages:${channel.id}", nowMs(), null))
-                }
+            // Sync em lote: 1 chamada paginada para todas as pastas (antes era 1 por pasta,
+            // o que gerava as rajadas de 429). O cursor incremental fica em "messages:all".
+            val since = syncStateDao.byEntity(MESSAGES_SYNC_KEY)?.cursor
+            val syncedAt = messagesRepository.syncAllFromRemote(since)
+            if (syncedAt != null) {
+                syncStateDao.upsert(SyncStateEntity(MESSAGES_SYNC_KEY, nowMs(), syncedAt))
             }
             queueDao.cleanupDone()
             statusStore.markSynced()

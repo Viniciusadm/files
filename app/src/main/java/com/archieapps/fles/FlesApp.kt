@@ -11,6 +11,7 @@ import coil3.request.crossfade
 import coil3.video.VideoFrameDecoder
 import com.archieapps.fles.data.local.TokenStorage
 import com.archieapps.fles.data.remote.AuthInterceptor
+import com.archieapps.fles.data.remote.RateLimitInterceptor
 import com.archieapps.fles.di.AppContainer
 import okhttp3.OkHttpClient
 import okio.Path.Companion.toOkioPath
@@ -33,6 +34,10 @@ class FlesApp : Application(), SingletonImageLoader.Factory {
     override fun newImageLoader(context: PlatformContext): ImageLoader {
         val okHttpClient = OkHttpClient.Builder()
             .addInterceptor(AuthInterceptor(TokenStorage(this)))
+            // Sem pacing proativo aqui: o Coil já limita a concorrência e mantém cache;
+            // só reabsorvemos eventuais 429/503 com Retry-After para a thumbnail apenas
+            // carregar um instante depois, sem travar a rolagem nem quebrar a imagem.
+            .addInterceptor(RateLimitInterceptor())
             .build()
         return ImageLoader.Builder(context)
             .components {

@@ -666,6 +666,41 @@ class MessagesRepository(
         apiService.messages(folderRemoteId).requireBody().forEach { upsertFromRemote(it, folderLocalId) }
     }
 
+    /**
+     * Sincroniza em lote as mensagens de TODAS as pastas numa única paginação por cursor,
+     * em vez de uma chamada por pasta (que gerava rajadas de 429 ao entrar num dispositivo
+     * novo). Com [since] != null o servidor devolve só o que mudou e também tombstones
+     * (deletedAt) para removermos localmente. Retorna o `syncedAt` do servidor a ser
+     * guardado como próximo cursor incremental, ou null se nada pôde ser sincronizado.
+     */
+    suspend fun syncAllFromRemote(since: String?): String? {
+        var cursor: String? = null
+        var syncedAt: String? = null
+        var refreshedChannels = false
+        do {
+            val page = apiService.messagesSync(since, cursor).requireBody()
+            // Mantemos o syncedAt do início da paginação para não criar buracos caso algo
+            // mude entre as páginas (o upsert é idempotente, então reprocessar não dói).
+            if (syncedAt == null) syncedAt = page.syncedAt
+            page.messages.orEmpty().forEach { remote ->
+                if (remote.deletedAt != null) {
+                    remote.id?.let { rid -> messageDao.byRemoteId(rid)?.let { hardDeleteMessage(it.localId) } }
+                    return@forEach
+                }
+                var folderLocalId = remote.folderId?.let { channelsRepository.getLocalId(it) }
+                if (folderLocalId == null && !refreshedChannels) {
+                    // Pasta criada em outro dispositivo agora há pouco: atualiza canais uma vez.
+                    channelsRepository.refreshFromRemote()
+                    refreshedChannels = true
+                    folderLocalId = remote.folderId?.let { channelsRepository.getLocalId(it) }
+                }
+                if (folderLocalId != null) upsertFromRemote(remote, folderLocalId)
+            }
+            cursor = page.nextCursor
+        } while (cursor != null)
+        return syncedAt
+    }
+
     suspend fun pushMessageCreate(localId: String) {
         val row = messageDao.byLocalId(localId) ?: return
         val folderRemoteId = channelsRepository.getRemoteId(row.folderLocalId) ?: throw IllegalStateException("Pasta ainda sem remoteId")
