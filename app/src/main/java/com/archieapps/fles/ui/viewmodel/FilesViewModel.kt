@@ -89,10 +89,10 @@ class FilesViewModel(
         _action.value = null
     }
 
-    fun toggleSelection(messageId: String) {
+    fun toggleSelection(attachmentId: String) {
         _state.update { current ->
             val next = current.selectedIds.toMutableSet().apply {
-                if (!add(messageId)) remove(messageId)
+                if (!add(attachmentId)) remove(attachmentId)
             }
             current.copy(selectedIds = next)
         }
@@ -106,7 +106,7 @@ class FilesViewModel(
         val ids = _state.value.selectedIds.toList()
         if (ids.isEmpty()) return
         viewModelScope.launch {
-            runCatching { messagesRepository.bulkDeleteMessages(ids) }
+            runCatching { messagesRepository.bulkDeleteAttachments(ids) }
                 .onSuccess { _action.value = FileActionState("${ids.size} arquivo(s) excluído(s).") }
                 .onFailure { _action.value = FileActionState(it.userMessage(), isError = true) }
             clearSelection()
@@ -117,32 +117,32 @@ class FilesViewModel(
         val ids = _state.value.selectedIds.toList()
         if (ids.isEmpty()) return
         viewModelScope.launch {
-            runCatching { messagesRepository.bulkMoveMessages(ids, targetFolderId) }
+            runCatching { messagesRepository.bulkMoveAttachments(ids, targetFolderId) }
                 .onSuccess { _action.value = FileActionState("${ids.size} arquivo(s) movido(s).") }
                 .onFailure { _action.value = FileActionState(it.userMessage(), isError = true) }
             clearSelection()
         }
     }
 
-    fun deleteFile(messageId: String) {
+    fun deleteFile(attachmentId: String) {
         viewModelScope.launch {
-            runCatching { messagesRepository.deleteMessage(messageId) }
+            runCatching { messagesRepository.deleteAttachment(attachmentId) }
                 .onSuccess { _action.value = FileActionState("Arquivo excluído.") }
                 .onFailure { _action.value = FileActionState(it.userMessage(), isError = true) }
         }
     }
 
-    fun moveFile(messageId: String, targetFolderId: String) {
+    fun moveFile(attachmentId: String, targetFolderId: String) {
         viewModelScope.launch {
-            runCatching { messagesRepository.moveMessage(messageId, targetFolderId) }
+            runCatching { messagesRepository.moveAttachment(attachmentId, targetFolderId) }
                 .onSuccess { _action.value = FileActionState("Arquivo movido.") }
                 .onFailure { _action.value = FileActionState(it.userMessage(), isError = true) }
         }
     }
 
-    fun toggleFavorite(messageId: String) {
+    fun toggleFavorite(attachmentId: String) {
         viewModelScope.launch {
-            runCatching { messagesRepository.toggleFavorite(messageId) }
+            runCatching { messagesRepository.favoriteAttachment(attachmentId) }
                 .onFailure { _action.value = FileActionState(it.userMessage(), isError = true) }
         }
     }

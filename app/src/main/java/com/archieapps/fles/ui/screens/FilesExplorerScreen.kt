@@ -156,19 +156,19 @@ fun FilesExplorerScreen(
                     FolderGridCard(channel = channel, onClick = { onOpenFolder(channel.id) })
                 }
                 gridItems(files, key = { "file-${it.id}" }, span = { GridItemSpan(1) }) { file ->
-                    val isSelected = selectedIds.contains(file.messageId)
+                    val isSelected = selectedIds.contains(file.id)
                     FileGridCard(
                         file = file,
                         onEnsureLocalFile = onEnsureLocalFile,
                         onClick = {
-                            if (selectionMode) onToggleSelection(file.messageId) else selectedFile = file
+                            if (selectionMode) onToggleSelection(file.id) else selectedFile = file
                         },
-                        onLongClick = { onToggleSelection(file.messageId) },
+                        onLongClick = { onToggleSelection(file.id) },
                         selected = isSelected,
                         selectionMode = selectionMode,
                         onDelete = { fileDeleteTarget = file },
                         onMove = { fileMoveTarget = file },
-                        onToggleFavorite = { onToggleFavorite(file.messageId) },
+                        onToggleFavorite = { onToggleFavorite(file.id) },
                         onRename = { fileRenameTarget = file }
                     )
                 }
@@ -183,18 +183,18 @@ fun FilesExplorerScreen(
                     FolderRow(channel = channel, onClick = { onOpenFolder(channel.id) })
                 }
                 items(files, key = { "file-${it.id}" }) { file ->
-                    val isSelected = selectedIds.contains(file.messageId)
+                    val isSelected = selectedIds.contains(file.id)
                     FileListRow(
                         file = file,
                         onClick = {
-                            if (selectionMode) onToggleSelection(file.messageId) else selectedFile = file
+                            if (selectionMode) onToggleSelection(file.id) else selectedFile = file
                         },
-                        onLongClick = { onToggleSelection(file.messageId) },
+                        onLongClick = { onToggleSelection(file.id) },
                         selected = isSelected,
                         selectionMode = selectionMode,
                         onDelete = { fileDeleteTarget = file },
                         onMove = { fileMoveTarget = file },
-                        onToggleFavorite = { onToggleFavorite(file.messageId) },
+                        onToggleFavorite = { onToggleFavorite(file.id) },
                         onRename = { fileRenameTarget = file }
                     )
                 }
@@ -240,7 +240,7 @@ fun FilesExplorerScreen(
             onClose = { fileMoveTarget = null },
             onMove = { folderId ->
                 fileMoveTarget = null
-                onMoveFile(file.messageId, folderId)
+                onMoveFile(file.id, folderId)
             }
         )
     }
@@ -250,7 +250,7 @@ fun FilesExplorerScreen(
             title = "Excluir arquivo?",
             message = "\"${file.name}\" será excluído. Esta ação não pode ser desfeita.",
             onClose = { fileDeleteTarget = null },
-            onConfirm = { onDeleteFile(file.messageId) }
+            onConfirm = { onDeleteFile(file.id) }
         )
     }
 

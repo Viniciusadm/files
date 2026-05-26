@@ -17,6 +17,10 @@ import com.archieapps.fles.data.remote.ChecklistItemRequest
 import com.archieapps.fles.data.remote.CreateChecklistRequest
 import com.archieapps.fles.data.remote.CreateMessageRequest
 import com.archieapps.fles.data.remote.CreateUploadRequest
+import com.archieapps.fles.data.remote.AttachmentMutationResponse
+import com.archieapps.fles.data.remote.BulkAttachmentIdsRequest
+import com.archieapps.fles.data.remote.BulkMoveAttachmentsRequest
+import com.archieapps.fles.data.remote.MoveAttachmentRequest
 import com.archieapps.fles.data.remote.MoveMessageRequest
 import com.archieapps.fles.data.remote.RenameAttachmentRequest
 import com.archieapps.fles.data.remote.RemoteAttachment
@@ -257,12 +261,234 @@ class MessagesRepository(
         return if (channelsRepository.isSecure(row.folderLocalId)) updated.toSecureUi() else updated.toUi(listItemDao.byMessage(id).map { it.toUi() }, attachmentDao.byMessage(id).map { it.toUi() })
     }
 
-    suspend fun bulkDeleteMessages(ids: List<String>) {
-        ids.forEach { deleteMessage(it) }
+    suspend fun deleteAttachment(attachmentLocalId: String) {
+        val attachment = attachmentDao.byLocalId(attachmentLocalId) ?: return
+        val message = messageDao.byLocalId(attachment.messageLocalId) ?: return
+        val now = nowMs()
+        attachmentDao.update(attachment.copy(
+            syncStatus = LocalSyncStatus.PendingDelete,
+            updatedAt = now,
+            deletedAt = now
+        ))
+        queueRepository.enqueue(
+            opType = "delete",
+            entity = "attachment",
+            entityLocalId = attachmentLocalId,
+            parentLocalId = attachment.messageLocalId,
+            dependsOnId = queueRepository.lastPendingOpId(attachmentLocalId)
+        )
+        cleanupParentMessageIfEmpty(message.localId, excludeAttachmentLocalId = attachmentLocalId)
+        scheduler.scheduleNow()
     }
 
-    suspend fun bulkMoveMessages(ids: List<String>, targetFolderId: String) {
-        ids.forEach { runCatching { moveMessage(it, targetFolderId) } }
+    suspend fun bulkDeleteAttachments(ids: List<String>) {
+        ids.forEach { deleteAttachment(it) }
+    }
+
+    suspend fun moveAttachment(attachmentLocalId: String, targetFolderLocalId: String) {
+        val attachment = attachmentDao.byLocalId(attachmentLocalId) ?: return
+        val originalMessage = messageDao.byLocalId(attachment.messageLocalId) ?: return
+        requireFolderAccessible(originalMessage.folderLocalId)
+        requireFolderAccessible(targetFolderLocalId)
+        require(channelsRepository.isSecure(originalMessage.folderLocalId) == channelsRepository.isSecure(targetFolderLocalId)) {
+            "Mover entre áreas normal e segura ainda não é suportado."
+        }
+        val now = nowMs()
+        val newMessage = createDetachedMessage(targetFolderLocalId, originalMessage, attachment, favorite = false)
+        attachmentDao.update(attachment.copy(
+            messageLocalId = newMessage.localId,
+            syncStatus = LocalSyncStatus.PendingUpdate,
+            updatedAt = now,
+            lastError = null
+        ))
+        queueRepository.enqueue(
+            opType = "move",
+            entity = "attachment",
+            entityLocalId = attachmentLocalId,
+            parentLocalId = targetFolderLocalId,
+            dependsOnId = queueRepository.lastPendingOpId(attachmentLocalId)
+        )
+        cleanupParentMessageIfEmpty(originalMessage.localId, excludeAttachmentLocalId = attachmentLocalId)
+        scheduler.scheduleNow()
+    }
+
+    suspend fun bulkMoveAttachments(ids: List<String>, targetFolderLocalId: String) {
+        if (ids.isEmpty()) return
+        val attachments = ids.mapNotNull { attachmentDao.byLocalId(it) }
+        if (attachments.isEmpty()) return
+        requireFolderAccessible(targetFolderLocalId)
+        attachments.forEach { att ->
+            val src = messageDao.byLocalId(att.messageLocalId) ?: return@forEach
+            requireFolderAccessible(src.folderLocalId)
+            require(channelsRepository.isSecure(src.folderLocalId) == channelsRepository.isSecure(targetFolderLocalId)) {
+                "Mover entre áreas normal e segura ainda não é suportado."
+            }
+        }
+        val now = nowMs()
+        val sourceMessageIds = attachments.map { it.messageLocalId }.toSet()
+        val firstSource = messageDao.byLocalId(attachments.first().messageLocalId) ?: return
+        val newMessage = createDetachedMessage(targetFolderLocalId, firstSource, attachments.first(), favorite = false)
+        attachments.forEach { att ->
+            attachmentDao.update(att.copy(
+                messageLocalId = newMessage.localId,
+                syncStatus = LocalSyncStatus.PendingUpdate,
+                updatedAt = now,
+                lastError = null
+            ))
+        }
+        queueRepository.enqueue(
+            opType = "bulkMove",
+            entity = "attachment",
+            entityLocalId = newMessage.localId,
+            parentLocalId = targetFolderLocalId,
+            payload = attachments.joinToString(",") { it.localId }
+        )
+        sourceMessageIds.forEach { srcId -> cleanupParentMessageIfEmpty(srcId, excludeAttachmentLocalId = null) }
+        scheduler.scheduleNow()
+    }
+
+    suspend fun pushAttachmentBulkMove(newMessageLocalId: String, payload: String) {
+        val attachmentLocalIds = payload.split(',').filter { it.isNotBlank() }
+        if (attachmentLocalIds.isEmpty()) return
+        val attachments = attachmentLocalIds.mapNotNull { attachmentDao.byLocalId(it) }
+        val remoteIds = attachments.mapNotNull { it.remoteId }
+        if (remoteIds.size != attachments.size) throw IllegalStateException("Anexo ainda sem remoteId")
+        val newMessage = messageDao.byLocalId(newMessageLocalId) ?: return
+        val targetRemoteId = channelsRepository.getRemoteId(newMessage.folderLocalId)
+            ?: throw IllegalStateException("Pasta destino ainda sem remoteId")
+        val response = apiService.bulkMoveAttachments(BulkMoveAttachmentsRequest(remoteIds, targetRemoteId)).requireBody()
+        val newRemoteMessageId = response.messageId
+        if (newRemoteMessageId != null && newMessage.remoteId == null) {
+            messageDao.update(newMessage.copy(
+                remoteId = newRemoteMessageId,
+                syncStatus = LocalSyncStatus.Synced,
+                updatedAt = nowMs(),
+                lastError = null
+            ))
+        }
+        attachments.forEach {
+            attachmentDao.update(it.copy(syncStatus = LocalSyncStatus.Synced, updatedAt = nowMs(), lastError = null))
+        }
+    }
+
+    suspend fun favoriteAttachment(attachmentLocalId: String) {
+        val attachment = attachmentDao.byLocalId(attachmentLocalId) ?: return
+        val originalMessage = messageDao.byLocalId(attachment.messageLocalId) ?: return
+        val siblings = attachmentDao.byMessage(originalMessage.localId).filter { it.localId != attachmentLocalId }
+        if (siblings.isEmpty()) {
+            toggleFavorite(originalMessage.localId)
+            return
+        }
+        requireFolderAccessible(originalMessage.folderLocalId)
+        val now = nowMs()
+        val newMessage = createDetachedMessage(originalMessage.folderLocalId, originalMessage, attachment, favorite = true)
+        attachmentDao.update(attachment.copy(
+            messageLocalId = newMessage.localId,
+            syncStatus = LocalSyncStatus.PendingUpdate,
+            updatedAt = now,
+            lastError = null
+        ))
+        queueRepository.enqueue(
+            opType = "favorite",
+            entity = "attachment",
+            entityLocalId = attachmentLocalId,
+            parentLocalId = originalMessage.folderLocalId,
+            dependsOnId = queueRepository.lastPendingOpId(attachmentLocalId)
+        )
+        scheduler.scheduleNow()
+    }
+
+    private suspend fun createDetachedMessage(
+        folderLocalId: String,
+        original: MessageEntity,
+        attachment: AttachmentEntity,
+        favorite: Boolean
+    ): MessageEntity {
+        val now = nowMs()
+        val type = when {
+            attachment.fileKind == "image" -> "image"
+            else -> "document"
+        }
+        val newMessage = MessageEntity(
+            localId = UUID.randomUUID().toString(),
+            remoteId = null,
+            folderLocalId = folderLocalId,
+            type = type,
+            content = "",
+            isFavorite = favorite,
+            syncStatus = LocalSyncStatus.PendingUpdate,
+            lastError = null,
+            createdAt = now,
+            updatedAt = now,
+            deletedAt = null
+        )
+        messageDao.upsert(newMessage)
+        return newMessage
+    }
+
+    private suspend fun cleanupParentMessageIfEmpty(messageLocalId: String, excludeAttachmentLocalId: String?) {
+        val message = messageDao.byLocalId(messageLocalId) ?: return
+        val remaining = attachmentDao.byMessage(messageLocalId).filter { it.localId != excludeAttachmentLocalId }
+        val secure = channelsRepository.isSecure(message.folderLocalId)
+        val plainContent = if (secure) {
+            secureFoldersRepository.tryDecryptStringOrNull(message.content).orEmpty()
+        } else {
+            cryptoRepository.tryDecryptString(message.content)
+        }
+        if (remaining.isEmpty() && plainContent.isBlank()) {
+            val now = nowMs()
+            messageDao.update(message.copy(
+                syncStatus = LocalSyncStatus.PendingDelete,
+                updatedAt = now,
+                deletedAt = now
+            ))
+        }
+    }
+
+    suspend fun pushAttachmentDelete(localId: String) {
+        val attachment = attachmentDao.byLocalId(localId) ?: return
+        val remoteId = attachment.remoteId
+        if (remoteId != null) {
+            apiService.deleteAttachment(remoteId).requireSuccess()
+        }
+        attachmentDao.delete(localId)
+    }
+
+    suspend fun pushAttachmentMove(localId: String) {
+        val attachment = attachmentDao.byLocalId(localId) ?: return
+        val remoteId = attachment.remoteId ?: throw IllegalStateException("Anexo ainda sem remoteId")
+        val newMessage = messageDao.byLocalId(attachment.messageLocalId) ?: throw IllegalStateException("Mensagem destino ausente")
+        val targetFolderRemoteId = channelsRepository.getRemoteId(newMessage.folderLocalId)
+            ?: throw IllegalStateException("Pasta destino ainda sem remoteId")
+        val response = apiService.moveAttachment(remoteId, MoveAttachmentRequest(targetFolderRemoteId)).requireBody()
+        applyAttachmentMutation(localId, response)
+    }
+
+    suspend fun pushAttachmentFavorite(localId: String) {
+        val attachment = attachmentDao.byLocalId(localId) ?: return
+        val remoteId = attachment.remoteId ?: throw IllegalStateException("Anexo ainda sem remoteId")
+        val response = apiService.favoriteAttachment(remoteId).requireBody()
+        applyAttachmentMutation(localId, response)
+    }
+
+    private suspend fun applyAttachmentMutation(attachmentLocalId: String, response: AttachmentMutationResponse) {
+        val attachment = attachmentDao.byLocalId(attachmentLocalId) ?: return
+        val newMessage = messageDao.byLocalId(attachment.messageLocalId) ?: return
+        val newRemoteMessageId = response.messageId
+        if (newRemoteMessageId != null && newMessage.remoteId == null) {
+            messageDao.update(newMessage.copy(
+                remoteId = newRemoteMessageId,
+                isFavorite = (response.isFavorite as? Boolean) ?: newMessage.isFavorite,
+                syncStatus = LocalSyncStatus.Synced,
+                updatedAt = nowMs(),
+                lastError = null
+            ))
+        }
+        attachmentDao.update(attachment.copy(
+            syncStatus = LocalSyncStatus.Synced,
+            updatedAt = nowMs(),
+            lastError = null
+        ))
     }
 
     suspend fun renameAttachment(attachmentLocalId: String, newName: String): Boolean {

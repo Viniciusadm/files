@@ -130,6 +130,24 @@ interface ApiService {
         @Body request: RenameAttachmentRequest
     ): ApiEnvelope<RemoteAttachment>
 
+    @DELETE("attachments/{id}")
+    suspend fun deleteAttachment(@Path("id") id: String): ApiEnvelope<Unit>
+
+    @PATCH("attachments/{id}/move")
+    suspend fun moveAttachment(
+        @Path("id") id: String,
+        @Body request: MoveAttachmentRequest
+    ): ApiEnvelope<AttachmentMutationResponse>
+
+    @PATCH("attachments/{id}/favorite")
+    suspend fun favoriteAttachment(@Path("id") id: String): ApiEnvelope<AttachmentMutationResponse>
+
+    @POST("attachments/bulk-delete")
+    suspend fun bulkDeleteAttachments(@Body request: BulkAttachmentIdsRequest): ApiEnvelope<BulkAttachmentResult>
+
+    @POST("attachments/bulk-move")
+    suspend fun bulkMoveAttachments(@Body request: BulkMoveAttachmentsRequest): ApiEnvelope<BulkAttachmentMoveResult>
+
     @GET
     suspend fun download(@Url url: String): ResponseBody
 }
@@ -276,6 +294,36 @@ data class MoveMessageRequest(
 
 data class RenameAttachmentRequest(
     val name: String
+)
+
+data class MoveAttachmentRequest(
+    val targetFolderId: String
+)
+
+data class BulkAttachmentIdsRequest(
+    val ids: List<String>
+)
+
+data class BulkMoveAttachmentsRequest(
+    val ids: List<String>,
+    val targetFolderId: String
+)
+
+data class AttachmentMutationResponse(
+    val attachment: RemoteAttachment?,
+    val messageId: String?,
+    val isFavorite: Any? = null
+)
+
+data class BulkAttachmentResult(
+    val deleted: List<String>? = null,
+    val failed: List<String>? = null
+)
+
+data class BulkAttachmentMoveResult(
+    val moved: List<String>? = null,
+    val failed: List<String>? = null,
+    val messageId: String? = null
 )
 
 data class CreateChecklistRequest(

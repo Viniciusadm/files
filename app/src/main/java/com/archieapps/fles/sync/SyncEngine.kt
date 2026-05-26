@@ -84,6 +84,10 @@ class SyncEngine(
                     "listItem.toggle" -> messagesRepository.pushListItem(op.entityLocalId, "toggle")
                     "listItem.delete" -> messagesRepository.pushListItem(op.entityLocalId, "delete")
                     "attachment.rename" -> messagesRepository.pushAttachmentRename(op.entityLocalId)
+                    "attachment.delete" -> messagesRepository.pushAttachmentDelete(op.entityLocalId)
+                    "attachment.move" -> messagesRepository.pushAttachmentMove(op.entityLocalId)
+                    "attachment.favorite" -> messagesRepository.pushAttachmentFavorite(op.entityLocalId)
+                    "attachment.bulkMove" -> messagesRepository.pushAttachmentBulkMove(op.entityLocalId, op.payload)
                     else -> throw IllegalStateException("Operação não suportada: ${op.entity}.${op.opType}")
                 }
             }.onSuccess {
