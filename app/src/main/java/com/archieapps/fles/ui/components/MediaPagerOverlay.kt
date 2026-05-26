@@ -1,7 +1,6 @@
 package com.archieapps.fles.ui.components
 
-import android.graphics.BitmapFactory
-import androidx.compose.foundation.Image
+import android.net.Uri
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.rememberTransformableState
@@ -39,8 +38,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.ImageBitmap
-import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
@@ -53,9 +50,7 @@ import androidx.compose.ui.window.DialogProperties
 import com.archieapps.fles.ui.model.FileItem
 import com.archieapps.fles.ui.model.FileKind
 import com.archieapps.fles.ui.theme.withAlpha
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import java.io.File
 
 @Composable
@@ -253,46 +248,23 @@ private fun ImagePage(
     onTap: () -> Unit,
     onZoomChange: (Boolean) -> Unit
 ) {
-    var bitmap by remember(file.id, localFile.absolutePath) { mutableStateOf<ImageBitmap?>(null) }
-    var failed by remember(file.id, localFile.absolutePath) { mutableStateOf(false) }
-
-    LaunchedEffect(file.id, localFile.absolutePath) {
-        bitmap = null
-        failed = false
-        val decoded = runCatching {
-            withContext(Dispatchers.IO) {
-                BitmapFactory.decodeFile(localFile.absolutePath)?.asImageBitmap()
-            }
-        }.getOrNull()
-        if (decoded == null) failed = true else bitmap = decoded
-    }
-
     Box(
         modifier = Modifier.fillMaxSize(),
         contentAlignment = Alignment.Center
     ) {
-        val current = bitmap
-        when {
-            current != null -> ZoomableImage(
-                bitmap = current,
-                contentDescription = file.name,
-                isActive = isActive,
-                onTap = onTap,
-                onZoomChange = onZoomChange
-            )
-            failed -> CenteredMessage("Não foi possível abrir esta imagem")
-            else -> CircularProgressIndicator(
-                modifier = Modifier.size(48.dp),
-                color = Color.White,
-                strokeWidth = 3.dp
-            )
-        }
+        ZoomableImage(
+            model = remember(localFile.absolutePath) { Uri.fromFile(localFile) },
+            contentDescription = file.name,
+            isActive = isActive,
+            onTap = onTap,
+            onZoomChange = onZoomChange
+        )
     }
 }
 
 @Composable
 private fun ZoomableImage(
-    bitmap: ImageBitmap,
+    model: Any?,
     contentDescription: String?,
     isActive: Boolean,
     onTap: () -> Unit,
@@ -325,9 +297,11 @@ private fun ZoomableImage(
         if ((previous > 1f) != (nextScale > 1f)) onZoomChange(nextScale > 1f)
     }
 
-    Image(
-        bitmap = bitmap,
+    MediaImage(
+        model = model,
         contentDescription = contentDescription,
+        fullResolution = true,
+        contentScale = ContentScale.Fit,
         modifier = Modifier
             .fillMaxSize()
             .graphicsLayer {
@@ -352,14 +326,13 @@ private fun ZoomableImage(
                         }
                     }
                 )
-            },
-        contentScale = ContentScale.Fit
+            }
     )
 }
 
 @Composable
 private fun VideoThumbnailPreview(file: FileItem, localPath: String?, onTap: () -> Unit) {
-    val meta = rememberVideoMeta(localPath)
+    val videoModel = remember(localPath) { localFileUri(localPath) }
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -367,15 +340,13 @@ private fun VideoThumbnailPreview(file: FileItem, localPath: String?, onTap: () 
             .pointerInput(Unit) { detectTapGestures(onTap = { onTap() }) },
         contentAlignment = Alignment.Center
     ) {
-        val thumb = meta.thumbnail
-        if (thumb != null) {
-            Image(
-                bitmap = thumb,
-                contentDescription = file.name,
-                modifier = Modifier.fillMaxSize(),
-                contentScale = ContentScale.Fit
-            )
-        }
+        MediaImage(
+            model = videoModel,
+            contentDescription = file.name,
+            modifier = Modifier.fillMaxSize(),
+            contentScale = ContentScale.Fit,
+            isVideoFrame = true
+        )
         Box(
             modifier = Modifier
                 .size(72.dp)

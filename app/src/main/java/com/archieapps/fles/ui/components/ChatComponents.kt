@@ -2,12 +2,10 @@ package com.archieapps.fles.ui.components
 
 import android.content.Context
 import android.content.Intent
-import android.graphics.BitmapFactory
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -94,9 +92,7 @@ import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.SolidColor
-import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -124,11 +120,8 @@ import com.archieapps.fles.ui.model.SyncStatus
 import com.archieapps.fles.ui.model.UploadStatus
 import com.archieapps.fles.ui.theme.FlesTheme
 import com.archieapps.fles.ui.theme.withAlpha
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import java.io.File
-import java.net.URL
 import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Locale
@@ -665,14 +658,16 @@ private fun MediaCell(
     val colors = FlesTheme.colors
     val isVideo = attachment.kind == FileKind.Video
     val ready = attachment.uploadStatus == UploadStatus.Uploaded
-    val preview = rememberAttachmentBitmap(attachment, onEnsure = onEnsureLocal)
-    val videoLocalPath = if (isVideo) {
+    val videoModel = if (isVideo) {
         remember(attachment.id, attachment.localPath) {
-            attachment.localPath?.removePrefix("file://")?.takeIf { File(it).exists() }
+            localFileUri(attachment.localPath)
         }
     } else null
-    val videoMeta = if (isVideo) rememberVideoMeta(videoLocalPath) else null
-    val videoThumb = videoMeta?.thumbnail
+    val imageModel = if (!isVideo) rememberMediaModel(
+        source = attachment.previewLocalPath ?: attachment.previewUrl ?: attachment.localPath ?: attachment.url,
+        cacheKey = attachment.id,
+        ensureLocal = if (ready) ({ onEnsureLocal(attachment) }) else null,
+    ) else null
 
     Box(
         modifier = modifier
@@ -681,8 +676,8 @@ private fun MediaCell(
         contentAlignment = Alignment.Center
     ) {
         when {
-            preview != null -> Image(bitmap = preview, contentDescription = attachment.fileName, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
-            videoThumb != null -> Image(bitmap = videoThumb, contentDescription = attachment.fileName, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
+            imageModel != null -> MediaImage(model = imageModel, contentDescription = attachment.fileName, modifier = Modifier.fillMaxSize())
+            videoModel != null -> MediaImage(model = videoModel, contentDescription = attachment.fileName, modifier = Modifier.fillMaxSize(), isVideoFrame = true)
         }
         if (isVideo && overlayCount == null) {
             Box(
@@ -804,8 +799,8 @@ private fun VideoThumb(
     var loadFailed by remember(attachment.id) { mutableStateOf(false) }
     var playerOpen by remember(attachment.id) { mutableStateOf(false) }
     val ready = attachment.uploadStatus == UploadStatus.Uploaded
-    val meta = rememberVideoMeta(localFile?.absolutePath)
-    val durationLabel = formatVideoDuration(meta.durationMs)
+    val videoModel = remember(localFile?.absolutePath) { localFileUri(localFile?.absolutePath) }
+    val durationLabel = formatVideoDuration(rememberVideoDuration(localFile?.absolutePath))
 
     Box(
         modifier = Modifier
@@ -833,15 +828,12 @@ private fun VideoThumb(
             },
         contentAlignment = Alignment.Center
     ) {
-        val thumbnail = meta.thumbnail
-        if (thumbnail != null) {
-            Image(
-                bitmap = thumbnail,
-                contentDescription = attachment.fileName,
-                modifier = Modifier.fillMaxSize(),
-                contentScale = ContentScale.Crop
-            )
-        }
+        MediaImage(
+            model = videoModel,
+            contentDescription = attachment.fileName,
+            modifier = Modifier.fillMaxSize(),
+            isVideoFrame = true
+        )
         Box(
             modifier = Modifier
                 .size(56.dp)
@@ -909,7 +901,11 @@ private fun ImageThumb(
     onEnsureLocal: suspend (Attachment) -> File
 ) {
     val colors = FlesTheme.colors
-    val preview = rememberAttachmentBitmap(attachment, onEnsure = onEnsureLocal)
+    val imageModel = rememberMediaModel(
+        source = attachment.previewLocalPath ?: attachment.previewUrl ?: attachment.localPath ?: attachment.url,
+        cacheKey = attachment.id,
+        ensureLocal = if (attachment.uploadStatus == UploadStatus.Uploaded) ({ onEnsureLocal(attachment) }) else null,
+    )
     val compressed = attachment.compressed
     val ready = attachment.uploadStatus == UploadStatus.Uploaded
     Box(
@@ -922,8 +918,8 @@ private fun ImageThumb(
             .clickable(enabled = ready, onClick = onOpen),
         contentAlignment = Alignment.Center
     ) {
-        if (preview != null) {
-            Image(bitmap = preview, contentDescription = attachment.fileName, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
+        if (imageModel != null) {
+            MediaImage(model = imageModel, contentDescription = attachment.fileName, modifier = Modifier.fillMaxSize())
         } else {
             Text("Toque para abrir", color = colors.mutedForeground, fontSize = 11.sp)
         }
@@ -1053,41 +1049,6 @@ private fun AttachmentBadge(label: String, background: Color, modifier: Modifier
             .padding(horizontal = 6.dp, vertical = 2.dp)
     ) {
         Text(label, color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.SemiBold)
-    }
-}
-
-@Composable
-private fun rememberAttachmentBitmap(
-    attachment: Attachment,
-    onEnsure: (suspend (Attachment) -> File)? = null
-): ImageBitmap? {
-    val source = attachment.previewLocalPath ?: attachment.previewUrl ?: attachment.localPath ?: attachment.url
-    var bitmap by remember(attachment.id, source) { mutableStateOf<ImageBitmap?>(null) }
-    LaunchedEffect(attachment.id, source) {
-        val initial = loadBitmap(source)
-        if (initial != null) {
-            bitmap = initial
-            return@LaunchedEffect
-        }
-        if (onEnsure == null || attachment.uploadStatus != UploadStatus.Uploaded) return@LaunchedEffect
-        val materialized = runCatching { onEnsure(attachment) }.getOrNull() ?: return@LaunchedEffect
-        bitmap = withContext(Dispatchers.IO) {
-            runCatching { BitmapFactory.decodeFile(materialized.absolutePath)?.asImageBitmap() }.getOrNull()
-        }
-    }
-    return bitmap
-}
-
-private suspend fun loadBitmap(source: String?): ImageBitmap? {
-    if (source.isNullOrBlank()) return null
-    return withContext(Dispatchers.IO) {
-        runCatching {
-            if (source.startsWith("http://") || source.startsWith("https://")) {
-                URL(source).openStream().use { BitmapFactory.decodeStream(it) }
-            } else {
-                BitmapFactory.decodeFile(source.removePrefix("file://"))
-            }?.asImageBitmap()
-        }.getOrNull()
     }
 }
 

@@ -1,7 +1,5 @@
 package com.archieapps.fles.ui.components
 
-import android.graphics.BitmapFactory
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -75,8 +73,6 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.ImageBitmap
-import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
@@ -269,11 +265,16 @@ fun FileGridCard(
 ) {
     val colors = FlesTheme.colors
     val style = kindStyle(file.kind)
-    val previewBitmap = rememberGridPreviewBitmap(file, onEnsureLocalFile)
+    val imageModel = if (file.isImagePreviewable()) rememberMediaModel(
+        source = file.previewLocalPath ?: file.localPath,
+        cacheKey = file.id,
+        ensureLocal = onEnsureLocalFile?.let { ensure -> { ensure(file) } },
+    ) else null
     val videoLocalPath = if (file.kind == FileKind.Video) {
         file.localPath?.removePrefix("file://")?.let { File(it).takeIf { f -> f.exists() }?.absolutePath }
     } else null
-    val videoMeta = if (file.kind == FileKind.Video) rememberVideoMeta(videoLocalPath) else null
+    val videoModel = videoLocalPath?.let { localFileUri(it) }
+    val videoDuration = if (file.kind == FileKind.Video) rememberVideoDuration(videoLocalPath) else 0L
     var menuOpen by remember { mutableStateOf(false) }
     Column(
         modifier = modifier
@@ -293,14 +294,13 @@ fun FileGridCard(
                 .aspectRatio(4f / 3f)
                 .background(file.previewColor ?: colors.muted)
         ) {
-            val videoThumb = videoMeta?.thumbnail
             when {
-                videoThumb != null -> {
-                    Image(
-                        bitmap = videoThumb,
+                videoModel != null -> {
+                    MediaImage(
+                        model = videoModel,
                         contentDescription = file.name,
                         modifier = Modifier.fillMaxSize(),
-                        contentScale = ContentScale.Crop
+                        isVideoFrame = true
                     )
                     Box(
                         modifier = Modifier
@@ -313,12 +313,11 @@ fun FileGridCard(
                         Icon(Icons.Filled.PlayArrow, null, modifier = Modifier.size(26.dp), tint = Color.White)
                     }
                 }
-                previewBitmap != null -> {
-                    Image(
-                        bitmap = previewBitmap,
+                imageModel != null -> {
+                    MediaImage(
+                        model = imageModel,
                         contentDescription = file.name,
-                        modifier = Modifier.fillMaxSize(),
-                        contentScale = ContentScale.Crop
+                        modifier = Modifier.fillMaxSize()
                     )
                 }
                 file.kind == FileKind.Video -> {
@@ -338,8 +337,8 @@ fun FileGridCard(
                     FileIconBadge(file.kind, large = true, modifier = Modifier.align(Alignment.Center))
                 }
             }
-            val durationLabel = videoMeta?.durationMs?.let { formatVideoDuration(it) }
-            if (!durationLabel.isNullOrEmpty()) {
+            val durationLabel = formatVideoDuration(videoDuration)
+            if (durationLabel.isNotEmpty()) {
                 Surface(
                     modifier = Modifier
                         .align(Alignment.BottomEnd)
@@ -496,11 +495,15 @@ fun GalleryFolderCard(
 ) {
     val colors = FlesTheme.colors
     val cover = group.cover
-    val previewBitmap = rememberGridPreviewBitmap(cover, onEnsureLocalFile)
+    val imageModel = if (cover.isImagePreviewable()) rememberMediaModel(
+        source = cover.previewLocalPath ?: cover.localPath,
+        cacheKey = cover.id,
+        ensureLocal = onEnsureLocalFile?.let { ensure -> { ensure(cover) } },
+    ) else null
     val videoLocalPath = if (cover.kind == FileKind.Video) {
         cover.localPath?.removePrefix("file://")?.let { File(it).takeIf { f -> f.exists() }?.absolutePath }
     } else null
-    val videoMeta = if (cover.kind == FileKind.Video) rememberVideoMeta(videoLocalPath) else null
+    val videoModel = videoLocalPath?.let { localFileUri(it) }
     Box(
         modifier = modifier
             .shadow(1.dp, RoundedCornerShape(FlesTheme.radius.x2l))
@@ -515,19 +518,17 @@ fun GalleryFolderCard(
                 .fillMaxSize()
                 .background(cover.previewColor ?: colors.muted)
         ) {
-            val videoThumb = videoMeta?.thumbnail
             when {
-                videoThumb != null -> Image(
-                    bitmap = videoThumb,
+                videoModel != null -> MediaImage(
+                    model = videoModel,
                     contentDescription = group.folderName,
                     modifier = Modifier.fillMaxSize(),
-                    contentScale = ContentScale.Crop
+                    isVideoFrame = true
                 )
-                previewBitmap != null -> Image(
-                    bitmap = previewBitmap,
+                imageModel != null -> MediaImage(
+                    model = imageModel,
                     contentDescription = group.folderName,
-                    modifier = Modifier.fillMaxSize(),
-                    contentScale = ContentScale.Crop
+                    modifier = Modifier.fillMaxSize()
                 )
                 else -> FileIconBadge(cover.kind, large = true, modifier = Modifier.align(Alignment.Center))
             }
@@ -596,8 +597,11 @@ fun FileListRow(
     val videoLocalPath = if (file.kind == FileKind.Video) {
         file.localPath?.removePrefix("file://")?.let { File(it).takeIf { f -> f.exists() }?.absolutePath }
     } else null
-    val videoMeta = if (file.kind == FileKind.Video) rememberVideoMeta(videoLocalPath) else null
-    val imageThumb = if (file.kind == FileKind.Image) rememberGridPreviewBitmap(file) else null
+    val videoModel = videoLocalPath?.let { localFileUri(it) }
+    val imageModel = if (file.kind == FileKind.Image) rememberMediaModel(
+        source = file.previewLocalPath ?: file.localPath,
+        cacheKey = file.id,
+    ) else null
     Row(
         modifier = modifier
             .fillMaxWidth()
@@ -616,16 +620,15 @@ fun FileListRow(
             }
             Spacer(Modifier.width(10.dp))
         }
-        val videoThumb = videoMeta?.thumbnail
         when {
-            videoThumb != null -> Box(
+            videoModel != null -> Box(
                 modifier = Modifier
                     .size(40.dp)
                     .clip(RoundedCornerShape(FlesTheme.radius.md))
                     .background(Color.Black),
                 contentAlignment = Alignment.Center
             ) {
-                Image(bitmap = videoThumb, contentDescription = file.name, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
+                MediaImage(model = videoModel, contentDescription = file.name, modifier = Modifier.fillMaxSize(), isVideoFrame = true)
                 Box(
                     modifier = Modifier
                         .size(20.dp)
@@ -636,13 +639,13 @@ fun FileListRow(
                     Icon(Icons.Filled.PlayArrow, null, modifier = Modifier.size(14.dp), tint = Color.White)
                 }
             }
-            imageThumb != null -> Box(
+            imageModel != null -> Box(
                 modifier = Modifier
                     .size(40.dp)
                     .clip(RoundedCornerShape(FlesTheme.radius.md))
                     .background(colors.muted)
             ) {
-                Image(bitmap = imageThumb, contentDescription = file.name, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
+                MediaImage(model = imageModel, contentDescription = file.name, modifier = Modifier.fillMaxSize())
             }
             else -> FileIconBadge(file.kind)
         }
@@ -950,7 +953,8 @@ private fun FilePreviewPanel(
             loading -> CircularProgressIndicator(color = colors.primary)
             error != null -> Text(error, color = colors.destructive, fontSize = 13.sp, lineHeight = 18.sp)
             file.kind == FileKind.Video -> {
-                val meta = rememberVideoMeta(localFile?.absolutePath)
+                val videoModel = localFileUri(localFile?.absolutePath)
+                val durationLabel = formatVideoDuration(rememberVideoDuration(localFile?.absolutePath))
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
@@ -959,10 +963,13 @@ private fun FilePreviewPanel(
                         .clickable(enabled = onPlayVideo != null) { onPlayVideo?.invoke() },
                     contentAlignment = Alignment.Center
                 ) {
-                    val thumb = meta.thumbnail
-                    if (thumb != null) {
-                        Image(bitmap = thumb, contentDescription = file.name, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Fit)
-                    }
+                    MediaImage(
+                        model = videoModel,
+                        contentDescription = file.name,
+                        modifier = Modifier.fillMaxSize(),
+                        contentScale = ContentScale.Fit,
+                        isVideoFrame = true
+                    )
                     Box(
                         modifier = Modifier
                             .size(64.dp)
@@ -972,7 +979,6 @@ private fun FilePreviewPanel(
                     ) {
                         Icon(Icons.Filled.PlayArrow, null, modifier = Modifier.size(36.dp), tint = Color.White)
                     }
-                    val durationLabel = formatVideoDuration(meta.durationMs)
                     if (durationLabel.isNotEmpty()) {
                         Surface(
                             modifier = Modifier.align(Alignment.BottomEnd).padding(8.dp),
@@ -985,11 +991,14 @@ private fun FilePreviewPanel(
                 }
             }
             file.isImagePreviewable() -> {
-                val bitmap = remember(localFile?.absolutePath) {
-                    localFile?.absolutePath?.let { BitmapFactory.decodeFile(it)?.asImageBitmap() }
-                }
-                if (bitmap != null) {
-                    Image(bitmap = bitmap, contentDescription = file.name, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Fit)
+                val imageModel = localFileUri(localFile?.absolutePath)
+                if (imageModel != null) {
+                    MediaImage(
+                        model = imageModel,
+                        contentDescription = file.name,
+                        modifier = Modifier.fillMaxSize(),
+                        contentScale = ContentScale.Fit
+                    )
                 } else {
                     Text("Preview indisponível", color = colors.mutedForeground, fontSize = 13.sp)
                 }
@@ -1046,27 +1055,6 @@ private fun FileItem.existingLocalFile(): File? {
     if (isSecure) return null
     val path = localPath?.removePrefix("file://") ?: return null
     return File(path).takeIf { it.exists() }
-}
-
-@Composable
-private fun rememberGridPreviewBitmap(file: FileItem, onEnsureLocalFile: (suspend (FileItem) -> File)? = null): ImageBitmap? {
-    val source = file.previewLocalPath ?: file.localPath
-    var bitmap by remember(file.id, source, file.isSecure) { mutableStateOf<ImageBitmap?>(null) }
-    LaunchedEffect(file.id, source) {
-        bitmap = null
-        if (!file.isImagePreviewable()) return@LaunchedEffect
-        bitmap = runCatching {
-            val localFile = if (file.isSecure) {
-                onEnsureLocalFile?.invoke(file)
-            } else {
-                source?.removePrefix("file://")?.let { File(it).takeIf { candidate -> candidate.exists() } }
-            } ?: return@LaunchedEffect
-            withContext(Dispatchers.IO) {
-                BitmapFactory.decodeFile(localFile.absolutePath)?.asImageBitmap()
-            }
-        }.getOrNull()
-    }
-    return bitmap
 }
 
 private fun FileItem.isImagePreviewable(): Boolean {
