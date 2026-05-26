@@ -68,6 +68,9 @@ class MessagesRepository(
     private companion object {
         const val UPLOAD_CHUNK_SIZE = 2 * 1024 * 1024
         const val ATTACHMENT_BATCH_SIZE = 20
+        // Estados em que a sessão de upload do servidor não aceita mais chunks:
+        // não dá para retomar, é preciso recriar a sessão do zero.
+        val TERMINAL_UPLOAD_STATUSES = setOf("failed", "cancelled", "expired")
     }
 
     fun observeMessages(folderId: String): Flow<List<Message>> {
@@ -717,7 +720,23 @@ class MessagesRepository(
 
     private suspend fun uploadAttachmentChunks(attachment: AttachmentEntity, upload: PreparedUpload): String {
         val existingUploadId = attachment.uploadId
-        val session = if (existingUploadId.isNullOrBlank()) {
+        // Tenta retomar a sessão existente; só é válida se ainda existir e não estiver em estado terminal.
+        val resumable = if (existingUploadId.isNullOrBlank()) {
+            null
+        } else {
+            attachmentDao.update(attachment.copy(uploadStatus = LocalUploadStatus.Retrying, uploadState = "retomando", lastError = null))
+            runCatching { apiService.uploadStatus(existingUploadId).requireBody() }
+                .getOrNull()
+                ?.takeUnless { it.status.lowercase() in TERMINAL_UPLOAD_STATUSES }
+        }
+        val session = resumable ?: run {
+            // Sessão inexistente (404/410) ou terminal (failed/cancelled/expired): descarta o
+            // uploadId morto e recomeça do zero, evitando o loop de 409 que travava o envio.
+            if (!existingUploadId.isNullOrBlank()) {
+                attachmentDao.byLocalId(attachment.localId)?.let {
+                    attachmentDao.update(it.copy(uploadId = null, nextChunkIndex = 0, uploadedBytes = 0, totalChunks = 0, chunkSize = 0))
+                }
+            }
             apiService.createUpload(
                 CreateUploadRequest(
                     fileName = upload.fileNameEnvelope,
@@ -729,9 +748,6 @@ class MessagesRepository(
                     compressed = attachment.compressed == true
                 )
             ).requireBody()
-        } else {
-            attachmentDao.update(attachment.copy(uploadStatus = LocalUploadStatus.Retrying, uploadState = "retomando", lastError = null))
-            apiService.uploadStatus(existingUploadId).requireBody()
         }
 
         var uploadId = session.uploadId

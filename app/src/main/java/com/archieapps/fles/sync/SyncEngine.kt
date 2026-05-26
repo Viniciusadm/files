@@ -102,7 +102,9 @@ class SyncEngine(
                     "channel" -> channelsRepository.markFailed(op.entityLocalId, message)
                     else -> messagesRepository.markFailed(op.entity, op.entityLocalId, message)
                 }
-                return
+                // A operação já foi reagendada com backoff (sai de `ready`); seguimos drenando
+                // as demais operações prontas em vez de interromper a fila inteira por um erro.
+                continue
             }
         }
     }
