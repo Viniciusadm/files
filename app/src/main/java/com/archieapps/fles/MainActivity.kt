@@ -176,8 +176,11 @@ private fun AuthNavHost(
         composable(AppRoutes.Login) {
             val loginViewModel = remember { LoginViewModel(appContainer.authRepository) }
             val state by loginViewModel.state.collectAsState()
+            var keyConfigured by remember { mutableStateOf(false) }
+            LaunchedEffect(Unit) { keyConfigured = appContainer.cryptoRepository.hasKey() }
             LoginScreen(
                 state = state,
+                keyConfigured = keyConfigured,
                 onEmailChange = loginViewModel::onEmailChange,
                 onPasswordChange = loginViewModel::onPasswordChange,
                 onLoginClick = { loginViewModel.login(onAuthenticated) },
@@ -192,8 +195,7 @@ private fun AuthNavHost(
                 onBack = { navController.popBackStack() },
                 onValueChange = keyViewModel::onValueChange,
                 onSave = { keyViewModel.save { activity.recreate() } },
-                onGenerate = keyViewModel::generate,
-                onClear = { keyViewModel.clear { activity.recreate() } }
+                onGenerate = keyViewModel::generate
             )
         }
     }
@@ -442,8 +444,7 @@ private fun AuthenticatedNavHost(
                     onBack = { navController.popBackStack() },
                     onValueChange = keyViewModel::onValueChange,
                     onSave = { keyViewModel.save { activity.recreate() } },
-                    onGenerate = keyViewModel::generate,
-                    onClear = { keyViewModel.clear { activity.recreate() } }
+                    onGenerate = keyViewModel::generate
                 )
             }
         }

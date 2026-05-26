@@ -41,7 +41,8 @@ class AppContainer(context: Context) {
         apiService = apiClient.apiService,
         tokenStorage = apiClient.tokenStorage,
         database = database,
-        secureFoldersRepository = secureFoldersRepository
+        secureFoldersRepository = secureFoldersRepository,
+        cryptoRepository = cryptoRepository
     )
     val channelsRepository = ChannelsRepository(
         apiService = apiClient.apiService,

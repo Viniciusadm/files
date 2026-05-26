@@ -127,8 +127,7 @@ fun KeyScreen(
     onBack: () -> Unit,
     onValueChange: (String) -> Unit,
     onSave: () -> Unit,
-    onGenerate: () -> Unit,
-    onClear: () -> Unit
+    onGenerate: () -> Unit
 ) {
     val colors = FlesTheme.colors
     Column(modifier = Modifier.fillMaxSize().background(colors.background)) {
@@ -171,13 +170,16 @@ fun KeyScreen(
                     if (state.error != null) {
                         Text(state.error, color = colors.destructive, fontSize = 12.sp, lineHeight = 16.sp)
                     }
-                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text("Chave (base64)", color = colors.foreground, fontSize = 14.sp, fontWeight = FontWeight.Medium)
-                        AppInput(state.value, onValueChange, "MGFiYz...  (32 bytes em base64)", singleLine = false, minHeight = 96.dp)
+                    if (!state.configured) {
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Text("Chave (base64)", color = colors.foreground, fontSize = 14.sp, fontWeight = FontWeight.Medium)
+                            AppInput(state.value, onValueChange, "MGFiYz...  (32 bytes em base64)", singleLine = false, minHeight = 96.dp)
+                        }
+                        AppButton("Salvar", onClick = onSave, modifier = Modifier.fillMaxWidth())
+                        AppButton("Gerar nova chave", onClick = onGenerate, modifier = Modifier.fillMaxWidth(), variant = AppButtonVariant.Outline, leadingIcon = Icons.Filled.Refresh)
+                    } else {
+                        Text("Para remover a chave, saia pelo menu Configurações > Sair.", color = colors.mutedForeground, fontSize = 12.sp, lineHeight = 16.sp)
                     }
-                    AppButton("Salvar", onClick = onSave, modifier = Modifier.fillMaxWidth())
-                    AppButton("Gerar nova chave", onClick = onGenerate, modifier = Modifier.fillMaxWidth(), variant = AppButtonVariant.Outline, leadingIcon = Icons.Filled.Refresh)
-                    AppButton("Limpar chave", onClick = onClear, modifier = Modifier.fillMaxWidth(), variant = AppButtonVariant.Destructive)
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         Badge("AES-256-GCM")
                         Badge("32 bytes")

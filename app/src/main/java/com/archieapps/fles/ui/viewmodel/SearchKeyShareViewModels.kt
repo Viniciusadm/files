@@ -86,14 +86,6 @@ class KeyViewModel(private val cryptoRepository: CryptoRepository) : ViewModel()
         _state.update { it.copy(value = cryptoRepository.generateKey(), error = null) }
     }
 
-    fun clear(onCleared: () -> Unit = {}) {
-        viewModelScope.launch {
-            cryptoRepository.clearKey()
-            _state.update { it.copy(configured = false, value = "", fingerprint = null, error = null) }
-            onCleared()
-        }
-    }
-
     private fun refresh() {
         viewModelScope.launch {
             _state.update {

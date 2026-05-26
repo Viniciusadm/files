@@ -15,7 +15,8 @@ class AuthRepository(
     private val apiService: ApiService,
     private val tokenStorage: TokenStorage,
     private val database: FlesDatabase,
-    private val secureFoldersRepository: SecureFoldersRepository
+    private val secureFoldersRepository: SecureFoldersRepository,
+    private val cryptoRepository: CryptoRepository
 ) {
     suspend fun login(email: String, password: String): LoginResponse {
         val response = apiService.login(LoginRequest(email, password)).requireBody()
@@ -36,6 +37,7 @@ class AuthRepository(
         }
         tokenStorage.clearToken()
         database.clearAllTables()
+        cryptoRepository.clearKey()
     }
 
     suspend fun getSavedToken(): String? {

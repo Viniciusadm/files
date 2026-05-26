@@ -32,6 +32,7 @@ import com.archieapps.fles.ui.viewmodel.LoginUiState
 @Composable
 fun LoginScreen(
     state: LoginUiState,
+    keyConfigured: Boolean,
     onEmailChange: (String) -> Unit,
     onPasswordChange: (String) -> Unit,
     onLoginClick: () -> Unit,
@@ -57,33 +58,36 @@ fun LoginScreen(
                 Text("Entrar", color = colors.foreground, fontSize = 24.sp, lineHeight = 32.sp, fontWeight = FontWeight.SemiBold)
                 Text("Acesse seu espaço pessoal de arquivos.", color = colors.mutedForeground, fontSize = 14.sp, lineHeight = 20.sp, textAlign = TextAlign.Center)
             }
-            Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("Email", color = colors.foreground, fontSize = 14.sp, fontWeight = FontWeight.Medium)
-                    AppInput(state.email, onEmailChange, "email@email.com")
+            if (keyConfigured) {
+                Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text("Email", color = colors.foreground, fontSize = 14.sp, fontWeight = FontWeight.Medium)
+                        AppInput(state.email, onEmailChange, "email@email.com")
+                    }
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text("Senha", color = colors.foreground, fontSize = 14.sp, fontWeight = FontWeight.Medium)
+                        AppInput(state.password, onPasswordChange, "password", visualTransformation = PasswordVisualTransformation())
+                    }
+                    if (state.error != null) {
+                        Text(state.error, color = colors.destructive, fontSize = 12.sp)
+                    }
+                    AppButton(
+                        text = "Entrar",
+                        onClick = onLoginClick,
+                        loading = state.loading,
+                        enabled = !state.loading,
+                        modifier = Modifier.fillMaxWidth()
+                    )
                 }
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("Senha", color = colors.foreground, fontSize = 14.sp, fontWeight = FontWeight.Medium)
-                    AppInput(state.password, onPasswordChange, "password", visualTransformation = PasswordVisualTransformation())
-                }
-                if (state.error != null) {
-                    Text(state.error, color = colors.destructive, fontSize = 12.sp)
-                }
-                AppButton(
-                    text = "Entrar",
-                    onClick = onLoginClick,
-                    loading = state.loading,
-                    enabled = !state.loading,
-                    modifier = Modifier.fillMaxWidth()
-                )
-            }
-            AppCard(modifier = Modifier.fillMaxWidth()) {
-                Column(modifier = Modifier.background(colors.favorite.withAlpha(0.12f)).padding(12.dp)) {
-                    Text("Chave E2EE não configurada", color = colors.foreground, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
-                    Spacer(Modifier.height(4.dp))
-                    Text("Sem ela, o app não consegue criptografar nem ler dados.", color = colors.mutedForeground, fontSize = 12.sp, lineHeight = 16.sp)
-                    Spacer(Modifier.height(8.dp))
-                    AppButton("Configurar agora", onClick = onKeyClick, leadingIcon = Icons.Filled.Key)
+            } else {
+                AppCard(modifier = Modifier.fillMaxWidth()) {
+                    Column(modifier = Modifier.background(colors.favorite.withAlpha(0.12f)).padding(12.dp)) {
+                        Text("Chave E2EE não configurada", color = colors.foreground, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                        Spacer(Modifier.height(4.dp))
+                        Text("Configure a chave antes de entrar. Sem ela, o app não consegue criptografar nem ler dados.", color = colors.mutedForeground, fontSize = 12.sp, lineHeight = 16.sp)
+                        Spacer(Modifier.height(8.dp))
+                        AppButton("Configurar agora", onClick = onKeyClick, leadingIcon = Icons.Filled.Key)
+                    }
                 }
             }
         }
