@@ -33,7 +33,9 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.archieapps.fles.di.AppContainer
 import com.archieapps.fles.security.BiometricAuthenticator
+import androidx.compose.runtime.CompositionLocalProvider
 import com.archieapps.fles.ui.components.AppShell
+import com.archieapps.fles.ui.components.LocalDownloadCenter
 import com.archieapps.fles.ui.components.MainSection
 import com.archieapps.fles.ui.navigation.AppRoutes
 import com.archieapps.fles.ui.screens.AppLockScreen
@@ -133,15 +135,17 @@ fun FlesAppRoot(
                     }
                 )
             } else {
-                AuthenticatedNavHost(
-                    appContainer = appContainer,
-                    appLockViewModel = appLockViewModel,
-                    activity = activity,
-                    onLogout = {
-                        appLockViewModel.resetUnlocked()
-                        sessionViewModel.logout()
-                    }
-                )
+                CompositionLocalProvider(LocalDownloadCenter provides appContainer.downloadCenter) {
+                    AuthenticatedNavHost(
+                        appContainer = appContainer,
+                        appLockViewModel = appLockViewModel,
+                        activity = activity,
+                        onLogout = {
+                            appLockViewModel.resetUnlocked()
+                            sessionViewModel.logout()
+                        }
+                    )
+                }
             }
         }
     }
@@ -322,7 +326,7 @@ private fun AuthenticatedNavHost(
         }
         composable(AppRoutes.Gallery) {
             val filesViewModel = remember(secureState.unlocked) {
-                FilesViewModel(null, false, appContainer.channelsRepository, appContainer.filesRepository, appContainer.messagesRepository)
+                FilesViewModel(null, false, appContainer.channelsRepository, appContainer.filesRepository, appContainer.messagesRepository, appContainer.downloadCenter)
             }
             val state by filesViewModel.state.collectAsState()
             val context = LocalContext.current
@@ -343,7 +347,7 @@ private fun AuthenticatedNavHost(
         }
         composable(AppRoutes.Files) {
             val filesViewModel = remember(secureState.unlocked) {
-                FilesViewModel(null, false, appContainer.channelsRepository, appContainer.filesRepository, appContainer.messagesRepository)
+                FilesViewModel(null, false, appContainer.channelsRepository, appContainer.filesRepository, appContainer.messagesRepository, appContainer.downloadCenter)
             }
             val state by filesViewModel.state.collectAsState()
             val context = LocalContext.current
@@ -374,7 +378,7 @@ private fun AuthenticatedNavHost(
         ) { backStackEntry ->
             val folderId = backStackEntry.arguments?.getString("folderId").orEmpty()
             val filesViewModel = remember(folderId, secureState.unlocked) {
-                FilesViewModel(folderId, false, appContainer.channelsRepository, appContainer.filesRepository, appContainer.messagesRepository)
+                FilesViewModel(folderId, false, appContainer.channelsRepository, appContainer.filesRepository, appContainer.messagesRepository, appContainer.downloadCenter)
             }
             val state by filesViewModel.state.collectAsState()
             val context = LocalContext.current

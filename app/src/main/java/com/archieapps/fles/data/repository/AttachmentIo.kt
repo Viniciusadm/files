@@ -107,6 +107,29 @@ class AttachmentIo(private val context: Context) {
         return File(uploadWorkDir, "$localId-upload.bin")
     }
 
+    /** Arquivo temporário onde o download criptografado é gravado em streaming. */
+    fun downloadTempFile(localId: String): File {
+        return File(uploadWorkDir, "$localId-download.enc")
+    }
+
+    /** Caminho final do anexo criptografado (pastas seguras guardam cifrado). */
+    fun attachmentFile(localId: String, extensionValue: String): File {
+        val extension = extensionValue.ifBlank { "bin" }.replace(Regex("[^a-zA-Z0-9]"), "").take(8).ifBlank { "bin" }
+        return File(attachmentsDir, "$localId.$extension")
+    }
+
+    /** Caminho final do arquivo decifrado (downloads não-seguros). */
+    fun downloadedFile(localId: String, fileName: String): File {
+        val safe = fileName.replace(Regex("[^a-zA-Z0-9._-]"), "_").ifBlank { "arquivo" }
+        return File(downloadsDir, "$localId-$safe")
+    }
+
+    /** Caminho de um arquivo de cache (preview decifrado), sem escrever nada. */
+    fun cacheFile(fileName: String): File {
+        val safe = fileName.replace(Regex("[^a-zA-Z0-9._-]"), "_").ifBlank { "arquivo" }
+        return File(context.cacheDir, "${UUID.randomUUID()}-$safe")
+    }
+
     fun temporaryWorkFile(localId: String): File {
         return File(uploadWorkDir, "$localId-source.bin")
     }

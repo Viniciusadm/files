@@ -68,10 +68,10 @@ class FilesRepository(
             .sortedByDescending { it.createdAt }
     }
 
-    suspend fun downloadToCache(file: FileItem): File {
+    suspend fun downloadToCache(file: FileItem, onProgress: (downloaded: Long, total: Long) -> Unit = { _, _ -> }): File {
         val message = messagesRepository.getMessages(file.folderId).firstOrNull { it.id == file.messageId }
         val attachment = message?.attachments?.firstOrNull { it.id == file.id }
             ?: throw IllegalStateException("Arquivo não encontrado")
-        return messagesRepository.downloadAttachment(attachment)
+        return messagesRepository.downloadAttachment(attachment, onProgress)
     }
 }

@@ -1,6 +1,9 @@
 package com.archieapps.fles.di
 
 import android.content.Context
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import com.archieapps.fles.data.local.AppLockStorage
 import com.archieapps.fles.data.local.KeyStorage
 import com.archieapps.fles.data.local.SecureFolderStorage
@@ -10,6 +13,7 @@ import com.archieapps.fles.data.repository.AuthRepository
 import com.archieapps.fles.data.repository.AttachmentIo
 import com.archieapps.fles.data.repository.ChannelsRepository
 import com.archieapps.fles.data.repository.CryptoRepository
+import com.archieapps.fles.data.repository.DownloadCenter
 import com.archieapps.fles.data.repository.FilesRepository
 import com.archieapps.fles.data.repository.MessagesRepository
 import com.archieapps.fles.data.repository.SecureFoldersRepository
@@ -68,6 +72,11 @@ class AppContainer(context: Context) {
     val filesRepository = FilesRepository(
         channelsRepository = channelsRepository,
         messagesRepository = messagesRepository
+    )
+    private val downloadScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    val downloadCenter = DownloadCenter(
+        scope = downloadScope,
+        filesRepository = filesRepository
     )
     val syncEngine = SyncEngine(
         cryptoRepository = cryptoRepository,

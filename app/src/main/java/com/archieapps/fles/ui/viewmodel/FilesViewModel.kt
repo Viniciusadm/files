@@ -3,6 +3,7 @@ package com.archieapps.fles.ui.viewmodel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.archieapps.fles.data.repository.ChannelsRepository
+import com.archieapps.fles.data.repository.DownloadCenter
 import com.archieapps.fles.data.repository.FilesRepository
 import com.archieapps.fles.data.repository.MessagesRepository
 import com.archieapps.fles.ui.components.FilesViewMode
@@ -22,7 +23,8 @@ class FilesViewModel(
     favoritesOnlyInitial: Boolean,
     private val channelsRepository: ChannelsRepository,
     private val filesRepository: FilesRepository,
-    private val messagesRepository: MessagesRepository
+    private val messagesRepository: MessagesRepository,
+    private val downloadCenter: DownloadCenter
 ) : ViewModel() {
     private val _state = MutableStateFlow(FilesUiState(favoritesOnly = favoritesOnlyInitial, loading = true))
     val state: StateFlow<FilesUiState> = _state.asStateFlow()
@@ -158,16 +160,11 @@ class FilesViewModel(
     }
 
     suspend fun downloadToCache(file: FileItem): File {
-        return filesRepository.downloadToCache(file)
+        return downloadCenter.ensure(file)
     }
 
     suspend fun ensureLocalFile(file: FileItem): File {
-        if (file.isSecure) return filesRepository.downloadToCache(file)
-        file.localPath?.removePrefix("file://")?.let {
-            val localFile = File(it)
-            if (localFile.exists()) return localFile
-        }
-        return filesRepository.downloadToCache(file)
+        return downloadCenter.ensure(file)
     }
 }
 

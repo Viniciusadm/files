@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
@@ -87,6 +88,14 @@ fun AppShell(
                 )
             }
         }
+        // Faixa de downloads: ancorada na base, acima da navegação flutuante quando ela existe.
+        DownloadsBanner(
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .navigationBarsPadding()
+                .padding(horizontal = 12.dp)
+                .padding(bottom = if (showBottomNav) 92.dp else 12.dp)
+        )
     }
 }
 

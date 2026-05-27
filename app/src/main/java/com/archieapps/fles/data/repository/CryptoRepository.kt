@@ -110,6 +110,42 @@ class CryptoRepository(private val keyStorage: KeyStorage) {
         return cipher.doFinal(ciphertext)
     }
 
+    /**
+     * Descriptografa [input] (formato IV(12) + ciphertext+tag) para [output] em
+     * streaming, com memória limitada (blocos de 64 KB). Evita carregar o arquivo
+     * inteiro na RAM — essencial para vídeos grandes. O `doFinal()` no fim verifica
+     * o tag GCM e lança em caso de adulteração/chave errada.
+     */
+    suspend fun decryptFileToFile(input: File, output: File) {
+        val key = decodeKey(keyStorage.getKey() ?: throw IllegalStateException("Chave E2EE não configurada."))
+        decryptFileToFileWithKey(input, output, key)
+    }
+
+    fun decryptFileToFileWithKey(input: File, output: File, key: ByteArray) {
+        if (input.length() < 13) throw IllegalArgumentException("Arquivo criptografado inválido")
+        output.parentFile?.mkdirs()
+        input.inputStream().buffered().use { source ->
+            val iv = ByteArray(12)
+            var ivRead = 0
+            while (ivRead < 12) {
+                val r = source.read(iv, ivRead, 12 - ivRead)
+                if (r < 0) throw IllegalArgumentException("Arquivo criptografado inválido")
+                ivRead += r
+            }
+            val cipher = Cipher.getInstance("AES/GCM/NoPadding")
+            cipher.init(Cipher.DECRYPT_MODE, SecretKeySpec(key, "AES"), GCMParameterSpec(128, iv))
+            output.outputStream().buffered().use { sink ->
+                val buffer = ByteArray(64 * 1024)
+                while (true) {
+                    val n = source.read(buffer)
+                    if (n < 0) break
+                    cipher.update(buffer, 0, n)?.let { sink.write(it) }
+                }
+                cipher.doFinal()?.let { sink.write(it) }
+            }
+        }
+    }
+
     suspend fun tryDecryptString(value: String?): String {
         val text = value.orEmpty()
         if (text.isBlank()) return text

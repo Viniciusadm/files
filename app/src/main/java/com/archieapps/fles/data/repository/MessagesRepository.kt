@@ -589,7 +589,7 @@ class MessagesRepository(
         scheduler.scheduleNow()
     }
 
-    suspend fun downloadAttachment(attachment: Attachment): File {
+    suspend fun downloadAttachment(attachment: Attachment, onProgress: (downloaded: Long, total: Long) -> Unit = { _, _ -> }): File {
         val entity = attachmentDao.byLocalId(attachment.id) ?: throw IllegalStateException("Anexo não encontrado")
         val secure = messageDao.byLocalId(entity.messageLocalId)?.let { channelsRepository.isSecure(it.folderLocalId) } == true
         if (secure) {
@@ -615,15 +615,23 @@ class MessagesRepository(
         }
         if (!networkMonitor.isOnline()) throw IllegalStateException("Arquivo indisponível offline. Baixe quando houver conexão.")
         attachmentDao.update(entity.copy(syncStatus = LocalSyncStatus.Downloading, lastError = null))
+        val encTmp = attachmentIo.downloadTempFile(entity.localId)
         return runCatching {
-            val encryptedBytes = apiService.download(normalizeDownloadUrl(entity.remoteUrl.orEmpty())).bytes()
-            val decryptedBytes = decryptFileBytes(entity.messageLocalId, encryptedBytes)
-            val localFile = if (secure) {
-                attachmentIo.persistAttachmentBytes(entity.localId, entity.extension.orEmpty(), encryptedBytes)
+            // Baixa o arquivo criptografado em streaming para o disco (sem carregar tudo na
+            // RAM) reportando o progresso, depois descriptografa também em streaming.
+            streamEncryptedDownload(normalizeDownloadUrl(entity.remoteUrl.orEmpty()), encTmp, onProgress)
+            val localFile: File
+            val previewFile: File
+            if (secure) {
+                localFile = attachmentIo.attachmentFile(entity.localId, entity.extension.orEmpty())
+                encTmp.copyTo(localFile, overwrite = true)
+                previewFile = attachmentIo.cacheFile(attachment.fileName)
+                decryptFileStream(entity.messageLocalId, encTmp, previewFile)
             } else {
-                attachmentIo.persistDownloadedFile(entity.localId, entity.fileName, decryptedBytes)
+                localFile = attachmentIo.downloadedFile(entity.localId, entity.fileName)
+                decryptFileStream(entity.messageLocalId, encTmp, localFile)
+                previewFile = localFile
             }
-            val previewFile = if (secure) attachmentIo.writeCacheFile(attachment.fileName, decryptedBytes) else localFile
             attachmentDao.update(entity.copy(
                 localPath = localFile.absolutePath,
                 previewLocalPath = if (secure) previewFile.absolutePath else entity.previewLocalPath,
@@ -632,9 +640,40 @@ class MessagesRepository(
                 updatedAt = nowMs()
             ))
             previewFile
-        }.getOrElse {
+        }.also { runCatching { encTmp.delete() } }.getOrElse {
             attachmentDao.update(entity.copy(syncStatus = LocalSyncStatus.Failed, lastError = it.message))
             throw it
+        }
+    }
+
+    private suspend fun streamEncryptedDownload(url: String, target: File, onProgress: (Long, Long) -> Unit) {
+        val body = apiService.download(url)
+        val total = body.contentLength()
+        onProgress(0L, total)
+        target.parentFile?.mkdirs()
+        body.byteStream().use { input ->
+            target.outputStream().use { output ->
+                val buffer = ByteArray(64 * 1024)
+                var downloaded = 0L
+                while (true) {
+                    val n = input.read(buffer)
+                    if (n < 0) break
+                    output.write(buffer, 0, n)
+                    downloaded += n
+                    onProgress(downloaded, total)
+                }
+            }
+        }
+    }
+
+    private suspend fun decryptFileStream(messageLocalId: String, input: File, output: File) {
+        val message = messageDao.byLocalId(messageLocalId)
+        val secure = message != null && channelsRepository.isSecure(message.folderLocalId)
+        if (secure) {
+            val key = secureFoldersRepository.secureKey() ?: throw IllegalStateException("Pastas seguras bloqueadas.")
+            cryptoRepository.decryptFileToFileWithKey(input, output, key)
+        } else {
+            cryptoRepository.decryptFileToFile(input, output)
         }
     }
 

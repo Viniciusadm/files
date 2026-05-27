@@ -54,6 +54,8 @@ import androidx.compose.material.icons.filled.ViewList
 import androidx.compose.material.icons.filled.Videocam
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.runtime.collectAsState
+import com.archieapps.fles.data.repository.DownloadStatus
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
@@ -335,6 +337,21 @@ fun FileGridCard(
                 }
                 else -> {
                     FileIconBadge(file.kind, large = true, modifier = Modifier.align(Alignment.Center))
+                }
+            }
+            val activeDownload = LocalDownloadCenter.current?.downloads?.collectAsState()?.value
+                ?.firstOrNull { it.attachmentId == file.id && it.status == DownloadStatus.Downloading }
+            if (activeDownload != null) {
+                Box(
+                    modifier = Modifier.fillMaxSize().background(Color.Black.withAlpha(0.35f)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    val fraction = activeDownload.fraction
+                    if (fraction != null) {
+                        CircularProgressIndicator(progress = { fraction }, modifier = Modifier.size(36.dp), color = Color.White, strokeWidth = 3.dp)
+                    } else {
+                        CircularProgressIndicator(modifier = Modifier.size(36.dp), color = Color.White, strokeWidth = 3.dp)
+                    }
                 }
             }
             val durationLabel = formatVideoDuration(videoDuration)

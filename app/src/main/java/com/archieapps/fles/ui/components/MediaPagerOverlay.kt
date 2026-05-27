@@ -7,6 +7,7 @@ import androidx.compose.foundation.gestures.rememberTransformableState
 import androidx.compose.foundation.gestures.transformable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -27,6 +28,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -52,6 +54,7 @@ import com.archieapps.fles.ui.model.FileKind
 import com.archieapps.fles.ui.theme.withAlpha
 import kotlinx.coroutines.launch
 import java.io.File
+import kotlin.math.roundToInt
 
 @Composable
 fun MediaPagerOverlay(
@@ -98,9 +101,13 @@ fun MediaPagerOverlay(
                 modifier = Modifier.fillMaxSize(),
                 beyondViewportPageCount = 1,
                 userScrollEnabled = !activePageZoomed,
-                key = { index -> files[index].id }
+                // getOrNull: abrir um vídeo ainda não baixado dispara o download, que grava
+                // no banco e faz a lista de mídias (state.files) re-emitir/encolher. O pager
+                // pode invocar este key com um índice já fora do novo tamanho — indexar direto
+                // (files[index]) estourava IndexOutOfBounds e fechava o app.
+                key = { index -> files.getOrNull(index)?.id ?: index }
             ) { page ->
-                val file = files[page]
+                val file = files.getOrNull(page) ?: return@HorizontalPager
                 val isActive = page == currentPage
                 MediaPage(
                     file = file,
@@ -204,11 +211,7 @@ private fun MediaPage(
     Box(modifier = Modifier.fillMaxSize().background(Color.Black)) {
         when {
             loadError != null -> CenteredMessage(loadError!!)
-            loading && localFile == null -> CircularProgressIndicator(
-                modifier = Modifier.size(48.dp).align(Alignment.Center),
-                color = Color.White,
-                strokeWidth = 3.dp
-            )
+            loading && localFile == null -> DownloadProgressIndicator(file.id)
             localFile != null && file.kind == FileKind.Video -> {
                 if (isActive) {
                     VideoPlayerContent(
@@ -355,6 +358,34 @@ private fun VideoThumbnailPreview(file: FileItem, localPath: String?, onTap: () 
             contentAlignment = Alignment.Center
         ) {
             Icon(Icons.Filled.PlayArrow, null, tint = Color.White, modifier = Modifier.size(40.dp))
+        }
+    }
+}
+
+@Composable
+private fun BoxScope.DownloadProgressIndicator(attachmentId: String) {
+    val center = LocalDownloadCenter.current
+    val items = center?.downloads?.collectAsState()?.value
+    val fraction = items?.firstOrNull { it.attachmentId == attachmentId }?.fraction
+    Column(
+        modifier = Modifier.align(Alignment.Center),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        if (fraction != null) {
+            CircularProgressIndicator(
+                progress = { fraction },
+                modifier = Modifier.size(56.dp),
+                color = Color.White,
+                strokeWidth = 4.dp
+            )
+            Spacer(Modifier.size(12.dp))
+            Text("${(fraction * 100).roundToInt()}%", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Medium)
+        } else {
+            CircularProgressIndicator(
+                modifier = Modifier.size(48.dp),
+                color = Color.White,
+                strokeWidth = 3.dp
+            )
         }
     }
 }
