@@ -1,4 +1,4 @@
-import { login, normalizeBaseUrl } from '@fles/core';
+import { login, normalizeBaseUrl } from '@relay/core';
 import { ChevronDown } from 'lucide-react';
 import { useState, type FormEvent } from 'react';
 import { DEFAULT_SERVER, loadSession, type StoredSession } from '../lib/storage.ts';

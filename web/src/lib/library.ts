@@ -1,4 +1,4 @@
-import type { FileItem, Folder, FlesService, Message, RemoteMessage } from '@fles/core';
+import type { FileItem, Folder, RelayService, Message, RemoteMessage } from '@relay/core';
 import { Store } from './store.ts';
 
 export interface LibraryState {
@@ -38,7 +38,7 @@ export class Library {
   private running: Promise<void> | null = null;
   private timer: ReturnType<typeof setInterval> | null = null;
 
-  constructor(readonly service: FlesService) {}
+  constructor(readonly service: RelayService) {}
 
   start(): () => void {
     void this.refresh(true);

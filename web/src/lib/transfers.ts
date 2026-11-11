@@ -1,4 +1,4 @@
-import type { FileItem, Folder, FlesService, Message, UploadSource } from '@fles/core';
+import type { FileItem, Folder, RelayService, Message, UploadSource } from '@relay/core';
 import { Store } from './store.ts';
 
 export type TransferStatus = 'queued' | 'running' | 'done' | 'error' | 'cancelled';
@@ -44,7 +44,7 @@ export function saveBlob(blob: Blob, name: string): void {
 }
 
 export async function decryptToBlob(
-  service: FlesService,
+  service: RelayService,
   file: FileItem,
   isSecure: boolean,
   options: { signal?: AbortSignal; onProgress?: (done: number, total: number) => void } = {},
@@ -66,7 +66,7 @@ export class Transfers {
   private lastEmit = 0;
   private pendingEmit: ReturnType<typeof setTimeout> | null = null;
 
-  constructor(private readonly service: FlesService, private readonly onUploaded: (message: Message) => void) {}
+  constructor(private readonly service: RelayService, private readonly onUploaded: (message: Message) => void) {}
 
   upload(folder: Folder, files: File[]): void {
     for (const file of files) {

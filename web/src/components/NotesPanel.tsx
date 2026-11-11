@@ -1,4 +1,4 @@
-import { formatBytes, type FileItem, type Message } from '@fles/core';
+import { formatBytes, type FileItem, type Message } from '@relay/core';
 import { CheckSquare, Copy, Paperclip, SendHorizontal, Square, Trash2 } from 'lucide-react';
 import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
 import { formatDate } from './fileVisuals.tsx';

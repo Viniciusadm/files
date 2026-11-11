@@ -1,4 +1,4 @@
-import { type ApiClient, type FileItem, type FlesKey, type Folder, type FlesService, type Message } from '@fles/core';
+import { type ApiClient, type FileItem, type RelayKey, type Folder, type RelayService, type Message } from '@relay/core';
 import {
   AlertCircle,
   Download,
@@ -62,16 +62,16 @@ export function Workspace({
   library,
   transfers,
   media,
-  flesKey,
+  relayKey,
   email,
   onLogout,
 }: {
   api: ApiClient;
-  service: FlesService;
+  service: RelayService;
   library: Library;
   transfers: Transfers;
   media: MediaCache;
-  flesKey: FlesKey;
+  relayKey: RelayKey;
   email: string | null;
   onLogout: () => void;
 }) {
@@ -681,7 +681,7 @@ export function Workspace({
           }}
         />
       ) : null}
-      {dialog?.type === 'settings' ? <SettingsDialog api={api} flesKey={flesKey} email={email} onLogout={onLogout} onClose={() => setDialog(null)} /> : null}
+      {dialog?.type === 'settings' ? <SettingsDialog api={api} relayKey={relayKey} email={email} onLogout={onLogout} onClose={() => setDialog(null)} /> : null}
     </div>
   );
 }

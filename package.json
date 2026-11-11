@@ -1,5 +1,5 @@
 {
-  "name": "fles-clients",
+  "name": "relay-clients",
   "private": true,
   "type": "module",
   "workspaces": [

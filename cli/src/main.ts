@@ -1,6 +1,6 @@
 import {
   ApiClient,
-  FlesKey,
+  RelayKey,
   PairingRequest,
   createApiToken,
   formatBytes,
@@ -8,7 +8,7 @@ import {
   logout,
   normalizeBaseUrl,
   type FileItem,
-} from '@fles/core';
+} from '@relay/core';
 import { Command, Option } from 'commander';
 import { mkdir } from 'node:fs/promises';
 import { hostname } from 'node:os';
@@ -22,8 +22,8 @@ import { downloadTo, expandPaths, fileSource } from './transfer.ts';
 const program = new Command();
 
 program
-  .name('fles')
-  .description('Envia e recebe arquivos criptografados entre o computador e o celular (Fles).')
+  .name('relay')
+  .description('Envia e recebe arquivos criptografados entre o computador e o celular (Relay).')
   .version('1.0.0')
   .showHelpAfterError();
 
@@ -61,7 +61,7 @@ program
       stored.token = token;
     });
     info('✓ Conectado.');
-    if (!effective(await loadConfig()).key) info('Agora configure a chave de criptografia com: fles pair');
+    if (!effective(await loadConfig()).key) info('Agora configure a chave de criptografia com: relay pair');
   });
 
 program
@@ -81,7 +81,7 @@ program
   .action(async () => {
     const context = await Context.open({ needsKey: false });
     const request = await PairingRequest.start(context.service.api, `CLI (${hostname()})`);
-    info('\nNo celular, abra o Fles → Ajustes → Conectar computador e digite o código:\n');
+    info('\nNo celular, abra o Relay → Ajustes → Conectar computador e digite o código:\n');
     info(`    ${request.code}\n`);
     info('Aguardando o celular… (Ctrl+C para cancelar)');
     const abort = new AbortController();
@@ -102,7 +102,7 @@ keyCommand
   .command('set [key]')
   .description('Define a chave colando o valor em base64 (mostrado no app em Ajustes → Chave).')
   .action(async (value?: string) => {
-    const key = FlesKey.fromBase64(value ?? (await ask('Chave (base64): ', { hidden: true })));
+    const key = RelayKey.fromBase64(value ?? (await ask('Chave (base64): ', { hidden: true })));
     await updateConfig((config) => {
       config.key = key.encoded;
     });
@@ -115,7 +115,7 @@ keyCommand
   .action(async () => {
     const { key } = effective(await loadConfig());
     if (!key) throw new CliError('Nenhuma chave configurada.');
-    process.stdout.write(`${await FlesKey.fromBase64(key).fingerprint()}\n`);
+    process.stdout.write(`${await RelayKey.fromBase64(key).fingerprint()}\n`);
   });
 
 program
@@ -125,7 +125,7 @@ program
     const settings = effective(await loadConfig());
     info(`Servidor:      ${settings.server ?? '(não configurado)'}`);
     info(`Token:         ${settings.token ? `${settings.token.slice(0, 12)}…` : '(não configurado)'}`);
-    info(`Chave:         ${settings.key ? await FlesKey.fromBase64(settings.key).fingerprint() : '(não configurada)'}`);
+    info(`Chave:         ${settings.key ? await RelayKey.fromBase64(settings.key).fingerprint() : '(não configurada)'}`);
     info(`Pasta padrão:  ${settings.defaultFolder}`);
     if (settings.server && settings.token) {
       const context = await Context.open({ needsKey: false });
@@ -168,7 +168,7 @@ program
     let scope = files;
     if (!options.all) {
       const folder = folderReference ? await context.requireFolder(folderReference) : await context.findFolder(context.defaultFolderName);
-      if (!folder) return info(`A pasta "${context.defaultFolderName}" ainda não existe. Envie algo com: fles send <arquivo>`);
+      if (!folder) return info(`A pasta "${context.defaultFolderName}" ainda não existe. Envie algo com: relay send <arquivo>`);
       scope = files.filter((file) => file.folderId === folder.id);
     }
     if (options.limit) scope = scope.slice(0, options.limit);

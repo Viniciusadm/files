@@ -1,6 +1,6 @@
 import { ghash } from '@noble/ciphers/_polyval.js';
 import { concatBytes } from './base64.ts';
-import { KeyError, type FlesKey } from './key.ts';
+import { KeyError, type RelayKey } from './key.ts';
 
 export const IV_LENGTH = 12;
 export const TAG_LENGTH = 16;
@@ -33,7 +33,7 @@ class GcmCore {
     private readonly tagMask: Uint8Array,
   ) {}
 
-  static async create(key: FlesKey, iv: Uint8Array): Promise<GcmCore> {
+  static async create(key: RelayKey, iv: Uint8Array): Promise<GcmCore> {
     const ctrKey = await key.ctr();
     const zero = new Uint8Array(BLOCK);
     const hashKey = await ctrTransform(ctrKey, new Uint8Array(BLOCK), zero);
@@ -84,7 +84,7 @@ export class GcmStreamEncryptor {
 
   private constructor(private readonly core: GcmCore, private readonly iv: Uint8Array<ArrayBuffer>) {}
 
-  static async create(key: FlesKey, iv: Uint8Array<ArrayBuffer> = crypto.getRandomValues(new Uint8Array(IV_LENGTH))): Promise<GcmStreamEncryptor> {
+  static async create(key: RelayKey, iv: Uint8Array<ArrayBuffer> = crypto.getRandomValues(new Uint8Array(IV_LENGTH))): Promise<GcmStreamEncryptor> {
     return new GcmStreamEncryptor(await GcmCore.create(key, iv), iv);
   }
 
@@ -113,7 +113,7 @@ export class GcmStreamDecryptor {
   private buffer: Uint8Array<ArrayBuffer> = new Uint8Array(0);
   private core: GcmCore | null = null;
 
-  constructor(private readonly key: FlesKey) {}
+  constructor(private readonly key: RelayKey) {}
 
   async update(chunk: Uint8Array): Promise<Uint8Array<ArrayBuffer>> {
     let data: Uint8Array = chunk;
@@ -147,12 +147,12 @@ export class GcmStreamDecryptor {
   }
 }
 
-export async function encryptFileBytes(key: FlesKey, plain: Uint8Array): Promise<Uint8Array<ArrayBuffer>> {
+export async function encryptFileBytes(key: RelayKey, plain: Uint8Array): Promise<Uint8Array<ArrayBuffer>> {
   const encryptor = await GcmStreamEncryptor.create(key);
   return concatBytes([await encryptor.update(plain), await encryptor.final()]);
 }
 
-export async function decryptFileBytes(key: FlesKey, cipher: Uint8Array): Promise<Uint8Array<ArrayBuffer>> {
+export async function decryptFileBytes(key: RelayKey, cipher: Uint8Array): Promise<Uint8Array<ArrayBuffer>> {
   const decryptor = new GcmStreamDecryptor(key);
   return concatBytes([await decryptor.update(cipher), await decryptor.final()]);
 }

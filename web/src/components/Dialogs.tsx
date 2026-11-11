@@ -1,4 +1,4 @@
-import { createApiToken, listApiTokens, revokeApiToken, type ApiClient, type ApiTokenInfo, type Folder, type FlesKey } from '@fles/core';
+import { createApiToken, listApiTokens, revokeApiToken, type ApiClient, type ApiTokenInfo, type Folder, type RelayKey } from '@relay/core';
 import { Copy, Eye, EyeOff, Folder as FolderIcon, FolderLock, LogOut, Terminal, Trash2 } from 'lucide-react';
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { formatDate } from './fileVisuals.tsx';
@@ -170,7 +170,7 @@ function TokenList({ api }: { api: ApiClient }) {
   useEffect(() => {
     void reload();
   }, []);
-  const command = created ? `fles login --server ${api.baseUrl.replace(/\/$/, '')} --token ${created}` : '';
+  const command = created ? `relay login --server ${api.baseUrl.replace(/\/$/, '')} --token ${created}` : '';
   return (
     <div className="space-y-3">
       {created ? (
@@ -228,12 +228,12 @@ function TokenList({ api }: { api: ApiClient }) {
   );
 }
 
-export function SettingsDialog({ api, flesKey, email, onLogout, onClose }: { api: ApiClient; flesKey: FlesKey; email: string | null; onLogout: () => void; onClose: () => void }) {
+export function SettingsDialog({ api, relayKey, email, onLogout, onClose }: { api: ApiClient; relayKey: RelayKey; email: string | null; onLogout: () => void; onClose: () => void }) {
   const [fingerprint, setFingerprint] = useState('');
   const [reveal, setReveal] = useState(false);
   useEffect(() => {
-    void flesKey.fingerprint().then(setFingerprint);
-  }, [flesKey]);
+    void relayKey.fingerprint().then(setFingerprint);
+  }, [relayKey]);
   return (
     <Modal title="Ajustes" onClose={onClose} wide>
       <div className="space-y-6">
@@ -254,13 +254,13 @@ export function SettingsDialog({ api, flesKey, email, onLogout, onClose }: { api
           <p className="mb-2 text-xs text-muted">Confira se a impressão digital é a mesma mostrada no celular. A chave fica só neste navegador.</p>
           <div className="rounded-xl border border-line px-3 py-2.5">
             <p className="font-mono text-sm">{fingerprint}</p>
-            {reveal ? <p className="mt-2 break-all rounded-md bg-sunken px-2 py-1.5 font-mono text-xs select-all">{flesKey.encoded}</p> : null}
+            {reveal ? <p className="mt-2 break-all rounded-md bg-sunken px-2 py-1.5 font-mono text-xs select-all">{relayKey.encoded}</p> : null}
             <div className="mt-2 flex gap-2">
               <Button variant="ghost" onClick={() => setReveal((value) => !value)}>
                 {reveal ? <EyeOff className="size-4" /> : <Eye className="size-4" />} {reveal ? 'Ocultar' : 'Mostrar chave'}
               </Button>
               {reveal ? (
-                <Button variant="ghost" onClick={() => navigator.clipboard.writeText(flesKey.encoded).then(() => toast('Chave copiada'))}>
+                <Button variant="ghost" onClick={() => navigator.clipboard.writeText(relayKey.encoded).then(() => toast('Chave copiada'))}>
                   <Copy className="size-4" /> Copiar
                 </Button>
               ) : null}
@@ -270,7 +270,7 @@ export function SettingsDialog({ api, flesKey, email, onLogout, onClose }: { api
         <section>
           <h3 className="mb-1 text-sm font-semibold">Linha de comando</h3>
           <p className="mb-3 text-xs text-muted">
-            Use o <code className="font-mono">fles</code> para automatizar: <code className="font-mono">fles send arquivo.pdf</code>, <code className="font-mono">fles pull --watch</code>. Cada computador tem o seu token, que só acessa os arquivos.
+            Use o <code className="font-mono">relay</code> para automatizar: <code className="font-mono">relay send arquivo.pdf</code>, <code className="font-mono">relay pull --watch</code>. Cada computador tem o seu token, que só acessa os arquivos.
           </p>
           <TokenList api={api} />
         </section>

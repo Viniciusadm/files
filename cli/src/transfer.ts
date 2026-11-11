@@ -1,4 +1,4 @@
-import type { FileItem, FlesService, UploadSource } from '@fles/core';
+import type { FileItem, RelayService, UploadSource } from '@relay/core';
 import { open, readdir, rename, rm, stat } from 'node:fs/promises';
 import { basename, extname, join } from 'node:path';
 import { progressReporter } from './output.ts';
@@ -59,7 +59,7 @@ export async function availablePath(directory: string, name: string): Promise<st
   return candidate;
 }
 
-export async function downloadTo(service: FlesService, file: FileItem, isSecure: boolean, directory: string, quiet = false): Promise<string> {
+export async function downloadTo(service: RelayService, file: FileItem, isSecure: boolean, directory: string, quiet = false): Promise<string> {
   const target = await availablePath(directory, safeFileName(file.name, file));
   const partial = `${target}.part`;
   const handle = await open(partial, 'w', 0o644);

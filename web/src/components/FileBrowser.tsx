@@ -1,4 +1,4 @@
-import { formatBytes, type FileItem, type Folder } from '@fles/core';
+import { formatBytes, type FileItem, type Folder } from '@relay/core';
 import { Check, Folder as FolderIcon, FolderLock, MoreVertical, Star } from 'lucide-react';
 import { memo, useEffect, useRef, useState, type MouseEvent } from 'react';
 import type { MediaCache } from '../lib/media.ts';

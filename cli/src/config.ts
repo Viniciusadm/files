@@ -13,9 +13,9 @@ export interface StoredConfig {
 export const DEFAULT_FOLDER_NAME = 'Transferências';
 
 export function configDir(): string {
-  if (process.env.FLES_CONFIG_DIR) return process.env.FLES_CONFIG_DIR;
+  if (process.env.RELAY_CONFIG_DIR) return process.env.RELAY_CONFIG_DIR;
   const base = process.env.XDG_CONFIG_HOME || (process.platform === 'win32' ? process.env.APPDATA : null) || join(homedir(), '.config');
-  return join(base as string, 'fles');
+  return join(base as string, 'relay');
 }
 
 function configPath(): string {
@@ -48,10 +48,10 @@ export async function updateConfig(change: (config: StoredConfig) => void): Prom
 
 export function effective(config: StoredConfig) {
   return {
-    server: process.env.FLES_SERVER || config.server || null,
-    token: process.env.FLES_TOKEN || config.token || null,
-    key: process.env.FLES_KEY || config.key || null,
-    pin: process.env.FLES_PIN || null,
-    defaultFolder: process.env.FLES_FOLDER || config.defaultFolder || DEFAULT_FOLDER_NAME,
+    server: process.env.RELAY_SERVER || config.server || null,
+    token: process.env.RELAY_TOKEN || config.token || null,
+    key: process.env.RELAY_KEY || config.key || null,
+    pin: process.env.RELAY_PIN || null,
+    defaultFolder: process.env.RELAY_FOLDER || config.defaultFolder || DEFAULT_FOLDER_NAME,
   };
 }

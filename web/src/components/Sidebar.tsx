@@ -1,4 +1,4 @@
-import type { Folder } from '@fles/core';
+import type { Folder } from '@relay/core';
 import { ChevronRight, Clock, Folder as FolderIcon, FolderLock, FolderPlus, Lock, LockOpen, Settings, Star, Upload } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { BrandMark } from './Brand.tsx';
@@ -98,7 +98,7 @@ export function Sidebar({
     <aside className="flex h-full w-72 flex-col border-r border-line bg-surface">
       <div className="flex items-center gap-2.5 px-4 pt-4 pb-3">
         <BrandMark className="size-8" />
-        <span className="text-lg font-semibold tracking-tight">Fles</span>
+        <span className="text-lg font-semibold tracking-tight">Relay</span>
       </div>
       <div className="px-3 pb-3">
         <Button variant="primary" className="w-full h-10" onClick={onUpload}>

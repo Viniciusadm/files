@@ -14,7 +14,7 @@ class PairingRepository(
         val pending = try {
             apiService.pendingPairing().requireBody()
         } catch (error: HttpException) {
-            if (error.code() == 404) throw IllegalStateException("Nenhum computador aguardando. Abra o Fles no computador e gere um código.")
+            if (error.code() == 404) throw IllegalStateException("Nenhum computador aguardando. Abra o Relay no computador e gere um código.")
             throw error
         }
         val desktopKey = cryptoRepository.decodeBytes(pending.publicKey)

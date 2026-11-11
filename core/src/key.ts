@@ -11,7 +11,7 @@ export interface Envelope {
 
 export class KeyError extends Error {}
 
-export class FlesKey {
+export class RelayKey {
   readonly raw: Uint8Array<ArrayBuffer>;
   readonly encoded: string;
   private gcmKey?: Promise<CryptoKey>;
@@ -22,7 +22,7 @@ export class FlesKey {
     this.encoded = encoded;
   }
 
-  static fromBase64(value: string): FlesKey {
+  static fromBase64(value: string): RelayKey {
     const encoded = value.trim();
     let raw: Uint8Array<ArrayBuffer>;
     try {
@@ -33,16 +33,16 @@ export class FlesKey {
     if (raw.length !== 32) {
       throw new KeyError('A chave precisa ter 32 bytes (AES-256) em base64.');
     }
-    return new FlesKey(raw, encoded);
+    return new RelayKey(raw, encoded);
   }
 
-  static fromRaw(raw: Uint8Array): FlesKey {
+  static fromRaw(raw: Uint8Array): RelayKey {
     const copy = new Uint8Array(raw);
-    return FlesKey.fromBase64(bytesToBase64(copy));
+    return RelayKey.fromBase64(bytesToBase64(copy));
   }
 
-  static generate(): FlesKey {
-    return FlesKey.fromRaw(crypto.getRandomValues(new Uint8Array(32)));
+  static generate(): RelayKey {
+    return RelayKey.fromRaw(crypto.getRandomValues(new Uint8Array(32)));
   }
 
   gcm(): Promise<CryptoKey> {
@@ -118,7 +118,7 @@ export function looksLikeEnvelope(value: string | null | undefined): boolean {
   return text.includes('"algorithm"') && text.includes('"iv"') && text.includes('"ciphertext"');
 }
 
-export async function decryptOrNull(key: FlesKey | null, value: string | null | undefined): Promise<string | null> {
+export async function decryptOrNull(key: RelayKey | null, value: string | null | undefined): Promise<string | null> {
   if (value == null || value.trim() === '') return value ?? null;
   if (!looksLikeEnvelope(value)) return value;
   if (!key) return null;

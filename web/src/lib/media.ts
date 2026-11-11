@@ -1,4 +1,4 @@
-import type { FileItem, FlesService } from '@fles/core';
+import type { FileItem, RelayService } from '@relay/core';
 import { decryptToBlob } from './transfers.ts';
 
 const THUMBNAIL_MAX_BYTES = 12 * 1024 * 1024;
@@ -11,7 +11,7 @@ export class MediaCache {
   private queue: (() => void)[] = [];
   private active = 0;
 
-  constructor(private readonly service: FlesService) {}
+  constructor(private readonly service: RelayService) {}
 
   canThumbnail(file: FileItem): boolean {
     return file.kind === 'image' && file.size > 0 && file.size <= THUMBNAIL_MAX_BYTES && !/heic|heif/i.test(file.mimeType);

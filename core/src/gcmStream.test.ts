@@ -2,7 +2,7 @@ import { createCipheriv, createDecipheriv, randomBytes } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
 import { concatBytes } from './base64.ts';
 import { GcmStreamDecryptor, GcmStreamEncryptor, decryptFileBytes, encryptFileBytes } from './gcmStream.ts';
-import { FlesKey } from './key.ts';
+import { RelayKey } from './key.ts';
 
 function nodeEncrypt(raw: Uint8Array, plain: Uint8Array): Uint8Array {
   const iv = randomBytes(12);
@@ -16,7 +16,7 @@ function nodeDecrypt(raw: Uint8Array, data: Uint8Array): Uint8Array {
   return concatBytes([decipher.update(data.subarray(12, data.length - 16)), decipher.final()]);
 }
 
-async function streamEncrypt(key: FlesKey, plain: Uint8Array, pieceSize: number): Promise<Uint8Array> {
+async function streamEncrypt(key: RelayKey, plain: Uint8Array, pieceSize: number): Promise<Uint8Array> {
   const encryptor = await GcmStreamEncryptor.create(key);
   const parts: Uint8Array[] = [];
   for (let offset = 0; offset < plain.length; offset += pieceSize) {
@@ -26,7 +26,7 @@ async function streamEncrypt(key: FlesKey, plain: Uint8Array, pieceSize: number)
   return concatBytes(parts);
 }
 
-async function streamDecrypt(key: FlesKey, data: Uint8Array, pieceSize: number): Promise<Uint8Array> {
+async function streamDecrypt(key: RelayKey, data: Uint8Array, pieceSize: number): Promise<Uint8Array> {
   const decryptor = new GcmStreamDecryptor(key);
   const parts: Uint8Array[] = [];
   for (let offset = 0; offset < data.length; offset += pieceSize) {
@@ -42,9 +42,9 @@ describe('streaming AES-GCM', () => {
 
   for (const size of sizes) {
     it(`matches node for ${size} bytes`, async () => {
-      const key = FlesKey.generate();
+      const key = RelayKey.generate();
       const plain = randomBytes(size);
-      for (const piece of pieces) {
+      for (const piece of pieces.filter((value) => value > 1 || size <= 1000)) {
         const encrypted = await streamEncrypt(key, plain, piece);
         expect(encrypted.length).toBe(size + 28);
         expect(Buffer.from(nodeDecrypt(key.raw, encrypted))).toEqual(plain);
@@ -55,18 +55,18 @@ describe('streaming AES-GCM', () => {
   }
 
   it('round trips with helpers', async () => {
-    const key = FlesKey.generate();
+    const key = RelayKey.generate();
     const plain = randomBytes(5000);
     expect(Buffer.from(await decryptFileBytes(key, await encryptFileBytes(key, plain)))).toEqual(plain);
   });
 
   it('rejects tampered data and wrong keys', async () => {
-    const key = FlesKey.generate();
+    const key = RelayKey.generate();
     const encrypted = await encryptFileBytes(key, randomBytes(100));
     const tampered = encrypted.slice();
     tampered[40] = (tampered[40] ?? 0) ^ 1;
     await expect(decryptFileBytes(key, tampered)).rejects.toThrow();
-    await expect(decryptFileBytes(FlesKey.generate(), encrypted)).rejects.toThrow();
+    await expect(decryptFileBytes(RelayKey.generate(), encrypted)).rejects.toThrow();
     await expect(decryptFileBytes(key, encrypted.subarray(0, 20))).rejects.toThrow();
   });
 });

@@ -1,12 +1,12 @@
-# Fles
+# Relay
 
-Fles keeps files, notes and checklists in folders, end-to-end encrypted, and moves them between your phone and your computer. This repository holds three clients of Manage API, a private Laravel backend that is not published:
+Relay keeps files, notes and checklists in folders, end-to-end encrypted, and moves them between your phone and your computer. This repository holds three clients of Manage API, a private Laravel backend that is not published:
 
 | Client | Folder | What it is for |
 | --- | --- | --- |
 | Android app | [`app/`](app) | The main app: folders, secure folders behind a PIN, chunked uploads up to 1 GB, gallery, video player, share target, offline sync |
 | Web app | [`web/`](web) | Use your files from any computer's browser: drag and drop, paste with Ctrl+V, previews, notes, transfers panel |
-| CLI | [`cli/`](cli) | `fles send`, `fles pull --watch` and friends, for scripts and automation |
+| CLI | [`cli/`](cli) | `relay send`, `relay pull --watch` and friends, for scripts and automation |
 
 The web app and the CLI share the encryption and API code in [`core/`](core).
 
@@ -18,7 +18,7 @@ Folder names, notes, checklist items, file names and file contents are encrypted
 
 - The 256-bit key is created on the phone and never goes to the server in the clear.
 - Files are stored as `IV (12 bytes) + ciphertext + tag (16 bytes)`. The web app encrypts and decrypts this format in streaming, with WebCrypto AES-CTR plus an incremental GHASH, so large files never sit whole in memory before being sent.
-- Secure folders use a second key, wrapped with PBKDF2-SHA256 (200,000 iterations) over `globalKey:PIN`. The web app unlocks them with the same PIN; the CLI reads it from `FLES_PIN`.
+- Secure folders use a second key, wrapped with PBKDF2-SHA256 (200,000 iterations) over `globalKey:PIN`. The web app unlocks them with the same PIN; the CLI reads it from `RELAY_PIN`.
 
 ### Bringing the key to a computer
 
@@ -64,7 +64,7 @@ cp web/.env.example web/.env   # VITE_API_URL=https://your-server/api
 npm run dev --workspace web
 ```
 
-`npm run build --workspace web` produces a static site in `web/dist` that works from any path. Serve it from any static host, or copy it into the Laravel `public/` folder (for example `public/fles`) to keep it on the same domain as the API. Without `VITE_API_URL`, the login screen asks for the server.
+`npm run build --workspace web` produces a static site in `web/dist` that works from any path. Serve it from any static host, or copy it into the Laravel `public/` folder (for example `public/relay`) to keep it on the same domain as the API. Without `VITE_API_URL`, the login screen asks for the server.
 
 Sign in with the same e-mail and password as the app. The key stays in this browser only (`localStorage`); **Ajustes → Sair** removes it.
 
@@ -72,25 +72,25 @@ Sign in with the same e-mail and password as the app. The key stays in this brow
 
 ```bash
 npm run build --workspace cli
-npm install -g ./cli          # installs the `fles` command
+npm install -g ./cli          # installs the `relay` command
 
-fles login --server https://your-server   # asks for e-mail and password once
-fles pair                                 # type the code on the phone
+relay login --server https://your-server   # asks for e-mail and password once
+relay pair                                 # type the code on the phone
 ```
 
-`fles login` creates an API token that can only reach the files module and does not keep your password. You can also create one in the web app (**Ajustes → Linha de comando**) and run `fles login --server … --token manage_…`.
+`relay login` creates an API token that can only reach the files module and does not keep your password. You can also create one in the web app (**Ajustes → Linha de comando**) and run `relay login --server … --token manage_…`.
 
 | Command | What it does |
 | --- | --- |
-| `fles send <files…> [-t folder] [-m text] [-r]` | Uploads files. Without `-t`, they go to the **Transferências** folder, created on first use |
-| `fles note "text"` / `echo text \| fles note -` | Sends a note (a link to open on the phone, for example) |
-| `fles pull [folder] [-o dir] [--delete] [--watch [s]]` | Downloads what arrived since the last pull; `--delete` moves instead of copying; `--watch` keeps going |
-| `fles get <name or #id…>` / `fles get --latest 3` | Downloads specific files |
-| `fles ls [folder] [--all]`, `fles folders` | Lists files and folders |
-| `fles rm`, `fles mkdir`, `fles status`, `fles key show` | Housekeeping |
-| `fles config --default-folder <name>` | Changes the folder used when none is given |
+| `relay send <files…> [-t folder] [-m text] [-r]` | Uploads files. Without `-t`, they go to the **Transferências** folder, created on first use |
+| `relay note "text"` / `echo text \| relay note -` | Sends a note (a link to open on the phone, for example) |
+| `relay pull [folder] [-o dir] [--delete] [--watch [s]]` | Downloads what arrived since the last pull; `--delete` moves instead of copying; `--watch` keeps going |
+| `relay get <name or #id…>` / `relay get --latest 3` | Downloads specific files |
+| `relay ls [folder] [--all]`, `relay folders` | Lists files and folders |
+| `relay rm`, `relay mkdir`, `relay status`, `relay key show` | Housekeeping |
+| `relay config --default-folder <name>` | Changes the folder used when none is given |
 
-Every listing command takes `--json`. For scripts and CI, the environment variables `FLES_SERVER`, `FLES_TOKEN`, `FLES_KEY`, `FLES_PIN`, `FLES_FOLDER` and `FLES_CONFIG_DIR` override the saved config (`~/.config/fles/config.json`, mode 600).
+Every listing command takes `--json`. For scripts and CI, the environment variables `RELAY_SERVER`, `RELAY_TOKEN`, `RELAY_KEY`, `RELAY_PIN`, `RELAY_FOLDER` and `RELAY_CONFIG_DIR` override the saved config (`~/.config/relay/config.json`, mode 600).
 
 Folders are matched by name (accents and case ignored), by path (`Work/Invoices`) or by `#id`.
 

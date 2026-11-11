@@ -1,4 +1,4 @@
-import { ApiClient, FlesKey, FlesService, logout } from '@fles/core';
+import { ApiClient, RelayKey, RelayService, logout } from '@relay/core';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { KeySetup } from './components/KeySetup.tsx';
 import { Login } from './components/Login.tsx';
@@ -14,15 +14,15 @@ function Session({ session, onChange, onExpired }: { session: StoredSession; onC
     () => new ApiClient({ baseUrl: session.server, credentials: { kind: 'bearer', token: session.token }, onUnauthorized: onExpired }),
     [session.server, session.token, onExpired],
   );
-  const flesKey = useMemo(() => (session.key ? FlesKey.fromBase64(session.key) : null), [session.key]);
+  const relayKey = useMemo(() => (session.key ? RelayKey.fromBase64(session.key) : null), [session.key]);
   const runtime = useMemo(() => {
-    if (!flesKey) return null;
-    const service = new FlesService(api, flesKey);
+    if (!relayKey) return null;
+    const service = new RelayService(api, relayKey);
     const library = new Library(service);
     const transfers = new Transfers(service, (message) => library.upsertLocally(message));
     const media = new MediaCache(service);
     return { service, library, transfers, media };
-  }, [api, flesKey]);
+  }, [api, relayKey]);
 
   useEffect(() => () => runtime?.media.clear(), [runtime]);
 
@@ -31,16 +31,16 @@ function Session({ session, onChange, onExpired }: { session: StoredSession; onC
     onChange(null);
   }, [api, onChange]);
 
-  const acceptKey = useCallback((key: FlesKey) => {
+  const acceptKey = useCallback((key: RelayKey) => {
     onChange({ ...session, key: key.encoded });
     void key.fingerprint().then((fingerprint) => toast(`Chave configurada · ${fingerprint}`, 'success'));
   }, [onChange, session]);
 
-  if (!flesKey || !runtime) {
+  if (!relayKey || !runtime) {
     return <KeySetup api={api} onKey={acceptKey} onLogout={signOut} />;
   }
 
-  return <Workspace api={api} flesKey={flesKey} email={session.email} onLogout={signOut} {...runtime} />;
+  return <Workspace api={api} relayKey={relayKey} email={session.email} onLogout={signOut} {...runtime} />;
 }
 
 export function App() {

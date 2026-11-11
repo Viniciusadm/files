@@ -105,7 +105,7 @@ fun ConnectComputerScreen(
                         }
                         else -> {
                             Text(
-                                "No computador, abra o Fles no navegador (ou rode \"fles pair\" no terminal) e digite aqui o código que aparecer. A chave vai criptografada direto para ele.",
+                                "No computador, abra o Relay no navegador (ou rode \"relay pair\" no terminal) e digite aqui o código que aparecer. A chave vai criptografada direto para ele.",
                                 color = colors.mutedForeground,
                                 fontSize = 14.sp,
                                 lineHeight = 20.sp

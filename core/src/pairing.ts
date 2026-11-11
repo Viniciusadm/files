@@ -1,7 +1,7 @@
 import type { ApiClient } from './api.ts';
 import { ApiError } from './api.ts';
 import { base64ToBytes, bytesToBase64, fromUtf8, utf8 } from './base64.ts';
-import { FlesKey, KeyError } from './key.ts';
+import { RelayKey, KeyError } from './key.ts';
 
 const CURVE = { name: 'ECDH', namedCurve: 'P-256' } as const;
 const CROCKFORD = '0123456789ABCDEFGHJKMNPQRSTVWXYZ';
@@ -40,10 +40,10 @@ export function normalizePairingCode(value: string): string {
   return clean.length === 10 ? `${clean.slice(0, 5)}-${clean.slice(5)}` : clean;
 }
 
-async function sharedAesKey(privateKey: CryptoKey, peerPublicKey: Uint8Array<ArrayBuffer>): Promise<FlesKey> {
+async function sharedAesKey(privateKey: CryptoKey, peerPublicKey: Uint8Array<ArrayBuffer>): Promise<RelayKey> {
   const peer = await crypto.subtle.importKey('raw', peerPublicKey, CURVE, false, []);
   const secret = await crypto.subtle.deriveBits({ name: 'ECDH', public: peer }, privateKey, 256);
-  return FlesKey.fromRaw(new Uint8Array(await crypto.subtle.digest('SHA-256', secret)));
+  return RelayKey.fromRaw(new Uint8Array(await crypto.subtle.digest('SHA-256', secret)));
 }
 
 function sleep(ms: number, signal?: AbortSignal): Promise<void> {
@@ -76,7 +76,7 @@ export class PairingRequest {
     return new PairingRequest(api, pair.privateKey, info.id, await pairingCode(publicKey), new Date(info.expiresAt));
   }
 
-  async waitForKey(signal?: AbortSignal): Promise<FlesKey> {
+  async waitForKey(signal?: AbortSignal): Promise<RelayKey> {
     for (;;) {
       if (Date.now() > this.expiresAt.getTime()) throw new KeyError('O código expirou. Gere um novo.');
       let info: PairingInfo;
@@ -89,7 +89,7 @@ export class PairingRequest {
       if (info.status === 'approved' && info.response) {
         const shared = await sharedAesKey(this.privateKey, base64ToBytes(info.response.publicKey));
         const envelope = JSON.stringify({ version: 1, algorithm: 'AES-256-GCM', iv: info.response.iv, ciphertext: info.response.ciphertext });
-        return FlesKey.fromBase64(fromUtf8(await shared.decryptBytes(envelope)));
+        return RelayKey.fromBase64(fromUtf8(await shared.decryptBytes(envelope)));
       }
       await sleep(POLL_INTERVAL_MS, signal);
     }
@@ -100,7 +100,7 @@ export class PairingRequest {
   }
 }
 
-export async function approvePairing(api: ApiClient, key: FlesKey, typedCode: string): Promise<void> {
+export async function approvePairing(api: ApiClient, key: RelayKey, typedCode: string): Promise<void> {
   const pending = await api.get<PairingInfo>('files/pairings/pending');
   const desktopKey = base64ToBytes(pending.publicKey);
   if ((await pairingCode(desktopKey)) !== normalizePairingCode(typedCode)) {

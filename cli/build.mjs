@@ -7,9 +7,9 @@ await build({
   platform: 'node',
   target: 'node20',
   format: 'esm',
-  outfile: 'dist/fles.mjs',
+  outfile: 'dist/relay.mjs',
   banner: { js: '#!/usr/bin/env node' },
   minify: true,
   legalComments: 'none',
 });
-await chmod('dist/fles.mjs', 0o755);
+await chmod('dist/relay.mjs', 0o755);

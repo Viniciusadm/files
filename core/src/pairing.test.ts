@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { ApiClient } from './api.ts';
-import { FlesKey } from './key.ts';
+import { RelayKey } from './key.ts';
 import { PairingRequest, approvePairing, normalizePairingCode, pairingCode, type PairingInfo } from './pairing.ts';
 
 function fakeServer() {
@@ -33,7 +33,7 @@ function fakeServer() {
 describe('pairing', () => {
   it('transfers the exact key string through ECDH', async () => {
     const api = fakeServer();
-    const phoneKey = FlesKey.generate();
+    const phoneKey = RelayKey.generate();
     const request = await PairingRequest.start(api, 'notebook');
     expect(request.code).toMatch(/^[0-9A-Z]{5}-[0-9A-Z]{5}$/);
     await expect(approvePairing(api, phoneKey, 'AAAAA-AAAAA')).rejects.toThrow();

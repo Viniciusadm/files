@@ -1,4 +1,4 @@
-import { formatBytes, type TransferProgress } from '@fles/core';
+import { formatBytes, type TransferProgress } from '@relay/core';
 
 export class CliError extends Error {}
 

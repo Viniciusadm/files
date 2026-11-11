@@ -1,4 +1,4 @@
-import { formatBytes } from '@fles/core';
+import { formatBytes } from '@relay/core';
 import { ArrowDown, ArrowUp, CheckCircle2, ChevronDown, RotateCcw, X, XCircle } from 'lucide-react';
 import { useState } from 'react';
 import { useStore } from '../lib/store.ts';

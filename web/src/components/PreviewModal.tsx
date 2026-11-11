@@ -1,4 +1,4 @@
-import { formatBytes, type FileItem } from '@fles/core';
+import { formatBytes, type FileItem } from '@relay/core';
 import { ChevronLeft, ChevronRight, Download, X } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import type { MediaCache } from '../lib/media.ts';

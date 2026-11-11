@@ -1,4 +1,4 @@
-import { ApiClient, ApiError, FlesKey, FlesService, type FileItem, type Folder, type Message } from '@fles/core';
+import { ApiClient, ApiError, RelayKey, RelayService, type FileItem, type Folder, type Message } from '@relay/core';
 import { effective, loadConfig, type StoredConfig } from './config.ts';
 import { CliError } from './output.ts';
 
@@ -11,20 +11,20 @@ export interface Library {
 export class Context {
   private library?: Promise<Library>;
 
-  private constructor(readonly config: StoredConfig, readonly service: FlesService, readonly defaultFolderName: string) {}
+  private constructor(readonly config: StoredConfig, readonly service: RelayService, readonly defaultFolderName: string) {}
 
   static async open(options: { needsKey?: boolean } = {}): Promise<Context> {
     const config = await loadConfig();
     const settings = effective(config);
     if (!settings.server || !settings.token) {
-      throw new CliError('Você ainda não entrou. Rode: fles login');
+      throw new CliError('Você ainda não entrou. Rode: relay login');
     }
     if (!settings.key && options.needsKey !== false) {
-      throw new CliError('Chave de criptografia não configurada. Rode: fles pair (ou fles key set <chave>)');
+      throw new CliError('Chave de criptografia não configurada. Rode: relay pair (ou relay key set <chave>)');
     }
     const api = new ApiClient({ baseUrl: settings.server, credentials: { kind: 'apiToken', token: settings.token } });
-    const key = settings.key ? FlesKey.fromBase64(settings.key) : FlesKey.generate();
-    const service = new FlesService(api, key);
+    const key = settings.key ? RelayKey.fromBase64(settings.key) : RelayKey.generate();
+    const service = new RelayService(api, key);
     if (settings.pin) await service.unlockSecure(settings.pin);
     return new Context(config, service, settings.defaultFolder);
   }
@@ -76,8 +76,8 @@ export class Context {
 
   async requireFolder(reference: string): Promise<Folder> {
     const folder = await this.findFolder(reference);
-    if (!folder) throw new CliError(`Pasta "${reference}" não encontrada. Veja as pastas com: fles folders`);
-    if (folder.name === null) throw new CliError(`A pasta "${reference}" é segura. Defina FLES_PIN para acessá-la.`);
+    if (!folder) throw new CliError(`Pasta "${reference}" não encontrada. Veja as pastas com: relay folders`);
+    if (folder.name === null) throw new CliError(`A pasta "${reference}" é segura. Defina RELAY_PIN para acessá-la.`);
     return folder;
   }
 
@@ -119,7 +119,7 @@ export function normalize(value: string): string {
 
 export function describeError(error: unknown): string {
   if (error instanceof ApiError) {
-    if (error.status === 401) return 'Sessão inválida ou token revogado. Rode: fles login';
+    if (error.status === 401) return 'Sessão inválida ou token revogado. Rode: relay login';
     return error.message;
   }
   if (error instanceof Error) return error.message;

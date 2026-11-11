@@ -2,7 +2,7 @@ import { ApiError, type ApiClient } from './api.ts';
 import { base64ToBytes, utf8 } from './base64.ts';
 import { classifyFile, extensionOf, guessMimeType, normalizeKind, type FileKind } from './fileKind.ts';
 import { GCM_OVERHEAD, GcmStreamDecryptor, GcmStreamEncryptor } from './gcmStream.ts';
-import { FlesKey, KeyError, decryptOrNull } from './key.ts';
+import { RelayKey, KeyError, decryptOrNull } from './key.ts';
 
 export const UPLOAD_CHUNK_SIZE = 2 * 1024 * 1024;
 export const MAX_FILE_BYTES = 1024 * 1024 * 1024 - GCM_OVERHEAD;
@@ -161,20 +161,20 @@ function sleep(ms: number, signal?: AbortSignal): Promise<void> {
   });
 }
 
-export class FlesService {
-  private secureKey: FlesKey | null = null;
+export class RelayService {
+  private secureKey: RelayKey | null = null;
 
-  constructor(readonly api: ApiClient, readonly key: FlesKey) {}
+  constructor(readonly api: ApiClient, readonly key: RelayKey) {}
 
   get secureUnlocked(): boolean {
     return this.secureKey !== null;
   }
 
-  keyFor(isSecure: boolean): FlesKey | null {
+  keyFor(isSecure: boolean): RelayKey | null {
     return isSecure ? this.secureKey : this.key;
   }
 
-  private requireKey(isSecure: boolean): FlesKey {
+  private requireKey(isSecure: boolean): RelayKey {
     const key = this.keyFor(isSecure);
     if (!key) throw new KeyError('Desbloqueie as pastas seguras para continuar.');
     return key;
@@ -203,11 +203,11 @@ export class FlesService {
     );
     let raw: Uint8Array;
     try {
-      raw = await FlesKey.fromRaw(new Uint8Array(bits)).decryptBytes(meta.keyEnvelope);
+      raw = await RelayKey.fromRaw(new Uint8Array(bits)).decryptBytes(meta.keyEnvelope);
     } catch {
       throw new KeyError('PIN incorreto.');
     }
-    this.secureKey = FlesKey.fromRaw(raw);
+    this.secureKey = RelayKey.fromRaw(raw);
   }
 
   lockSecure(): void {

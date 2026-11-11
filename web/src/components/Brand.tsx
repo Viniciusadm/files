@@ -9,7 +9,7 @@ export function AuthShell({ children, subtitle }: { children: React.ReactNode; s
         <div className="mb-8 flex items-center gap-3">
           <BrandMark className="size-11" />
           <div>
-            <h1 className="text-xl font-semibold tracking-tight">Fles</h1>
+            <h1 className="text-xl font-semibold tracking-tight">Relay</h1>
             <p className="text-sm text-muted">{subtitle}</p>
           </div>
         </div>

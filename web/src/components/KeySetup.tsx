@@ -1,4 +1,4 @@
-import { ApiClient, FlesKey, PairingRequest } from '@fles/core';
+import { ApiClient, RelayKey, PairingRequest } from '@relay/core';
 import { ClipboardPaste, KeyRound, Smartphone } from 'lucide-react';
 import { useEffect, useState, type FormEvent } from 'react';
 import { AuthShell } from './Brand.tsx';
@@ -13,7 +13,7 @@ function deviceName(): string {
   return `${browser}${system ? ` no ${system}` : ''}`;
 }
 
-function PairPanel({ api, onKey }: { api: ApiClient; onKey: (key: FlesKey) => void }) {
+function PairPanel({ api, onKey }: { api: ApiClient; onKey: (key: RelayKey) => void }) {
   const [request, setRequest] = useState<PairingRequest | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [attempt, setAttempt] = useState(0);
@@ -46,7 +46,7 @@ function PairPanel({ api, onKey }: { api: ApiClient; onKey: (key: FlesKey) => vo
   return (
     <div className="text-center">
       <p className="text-sm text-muted">
-        No celular, abra o Fles → <strong className="text-ink">Ajustes</strong> → <strong className="text-ink">Conectar computador</strong> e digite:
+        No celular, abra o Relay → <strong className="text-ink">Ajustes</strong> → <strong className="text-ink">Conectar computador</strong> e digite:
       </p>
       <div className="my-6 flex min-h-16 items-center justify-center">
         {request ? (
@@ -69,14 +69,14 @@ function PairPanel({ api, onKey }: { api: ApiClient; onKey: (key: FlesKey) => vo
   );
 }
 
-function PastePanel({ onKey }: { onKey: (key: FlesKey) => void }) {
+function PastePanel({ onKey }: { onKey: (key: RelayKey) => void }) {
   const [value, setValue] = useState('');
   const [error, setError] = useState<string | null>(null);
 
   function submit(event: FormEvent) {
     event.preventDefault();
     try {
-      onKey(FlesKey.fromBase64(value));
+      onKey(RelayKey.fromBase64(value));
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : String(caught));
     }
@@ -101,7 +101,7 @@ function PastePanel({ onKey }: { onKey: (key: FlesKey) => void }) {
   );
 }
 
-export function KeySetup({ api, onKey, onLogout }: { api: ApiClient; onKey: (key: FlesKey) => void; onLogout: () => void }) {
+export function KeySetup({ api, onKey, onLogout }: { api: ApiClient; onKey: (key: RelayKey) => void; onLogout: () => void }) {
   const [mode, setMode] = useState<Mode>('pair');
   const tabs: { id: Mode; label: string; icon: React.ReactNode }[] = [
     { id: 'pair', label: 'Parear com o celular', icon: <Smartphone className="size-4" /> },

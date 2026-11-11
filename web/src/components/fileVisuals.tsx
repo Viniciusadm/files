@@ -1,4 +1,4 @@
-import type { FileKind } from '@fles/core';
+import type { FileKind } from '@relay/core';
 import { Archive, FileAudio, FileCode, FileImage, FileText, FileVideo, File as FileIcon, Link, type LucideIcon } from 'lucide-react';
 
 export const kindVisuals: Record<FileKind, { icon: LucideIcon; tint: string; label: string }> = {
