@@ -27,6 +27,9 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Key
+import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.material.icons.filled.Link
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
 import androidx.compose.material.icons.filled.Add
@@ -130,6 +133,8 @@ fun KeyScreen(
     onGenerate: () -> Unit
 ) {
     val colors = FlesTheme.colors
+    val clipboard = LocalClipboardManager.current
+    var copied by remember { mutableStateOf(false) }
     Column(modifier = Modifier.fillMaxSize().background(colors.background)) {
         Row(modifier = Modifier.fillMaxWidth().padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
             IconButtonBox(Icons.AutoMirrored.Filled.KeyboardArrowLeft, onClick = onBack, iconSize = 22.dp)
@@ -178,7 +183,19 @@ fun KeyScreen(
                         AppButton("Salvar", onClick = onSave, modifier = Modifier.fillMaxWidth())
                         AppButton("Gerar nova chave", onClick = onGenerate, modifier = Modifier.fillMaxWidth(), variant = AppButtonVariant.Outline, leadingIcon = Icons.Filled.Refresh)
                     } else {
-                        Text("Para remover a chave, saia pelo menu Configurações > Sair.", color = colors.mutedForeground, fontSize = 12.sp, lineHeight = 16.sp)
+                        state.storedKey?.let { stored ->
+                            AppButton(
+                                if (copied) "Chave copiada" else "Copiar chave",
+                                onClick = {
+                                    clipboard.setText(AnnotatedString(stored))
+                                    copied = true
+                                },
+                                modifier = Modifier.fillMaxWidth(),
+                                variant = AppButtonVariant.Outline,
+                                leadingIcon = Icons.Filled.ContentCopy
+                            )
+                        }
+                        Text("Para levar a chave a um computador, prefira Configurações > Conectar computador. Para remover a chave, saia pelo menu Configurações > Sair.", color = colors.mutedForeground, fontSize = 12.sp, lineHeight = 16.sp)
                     }
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         Badge("AES-256-GCM")

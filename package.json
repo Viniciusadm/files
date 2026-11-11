@@ -1,0 +1,18 @@
+{
+  "name": "fles-clients",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "core",
+    "web",
+    "cli"
+  ],
+  "scripts": {
+    "test": "npm run test --workspaces --if-present",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "build": "npm run build --workspace web && npm run build --workspace cli"
+  },
+  "allowScripts": {
+    "esbuild@0.28.2": true
+  }
+}

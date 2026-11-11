@@ -26,6 +26,10 @@ import androidx.fragment.app.FragmentActivity
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.ProcessLifecycleOwner
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.delay
+import androidx.lifecycle.repeatOnLifecycle
+import androidx.lifecycle.lifecycleScope
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -42,6 +46,10 @@ import com.archieapps.fles.ui.screens.AppLockScreen
 import com.archieapps.fles.ui.screens.FilesExplorerScreen
 import com.archieapps.fles.ui.screens.GalleryScreen
 import com.archieapps.fles.ui.screens.KeyScreen
+import com.archieapps.fles.ui.viewmodel.ConnectComputerViewModel
+import com.archieapps.fles.ui.screens.ConnectComputerScreen
+import com.archieapps.fles.ui.model.User
+import androidx.compose.runtime.produceState
 import com.archieapps.fles.ui.screens.LoginScreen
 import com.archieapps.fles.ui.screens.MessagesScreen
 import com.archieapps.fles.ui.screens.SearchScreen
@@ -62,6 +70,8 @@ import com.archieapps.fles.ui.viewmodel.SessionState
 import com.archieapps.fles.ui.viewmodel.SessionViewModel
 import com.archieapps.fles.ui.viewmodel.ThreadViewModel
 
+private const val FOREGROUND_SYNC_INTERVAL_MS = 30_000L
+
 class MainActivity : FragmentActivity() {
 
     private lateinit var appLockViewModel: AppLockViewModel
@@ -80,6 +90,14 @@ class MainActivity : FragmentActivity() {
         val appContainer = (application as FlesApp).container
         appLockViewModel = AppLockViewModel(applicationContext, appContainer.appLockStorage)
         ProcessLifecycleOwner.get().lifecycle.addObserver(lifecycleObserver)
+        lifecycleScope.launch {
+            repeatOnLifecycle(Lifecycle.State.STARTED) {
+                while (true) {
+                    appContainer.syncScheduler.scheduleNow()
+                    delay(FOREGROUND_SYNC_INTERVAL_MS)
+                }
+            }
+        }
         setContent {
             FlesTheme {
                 FlesAppRoot(appContainer, appLockViewModel, this)
@@ -405,6 +423,7 @@ private fun AuthenticatedNavHost(
         }
         composable(AppRoutes.Settings) {
             val lockState by appLockViewModel.state.collectAsState()
+            val user by produceState<User?>(null) { value = appContainer.authRepository.cachedUser() }
             Shell(MainSection.Settings, navigateMessages, navigateGallery, navigateFiles, showBottomNav = false) {
                 SettingsScreen(
                     secureUnlocked = secureState.unlocked,
@@ -414,6 +433,9 @@ private fun AuthenticatedNavHost(
                     onCreateChannel = createChannel,
                     onNavigateKey = { navController.navigate(AppRoutes.Key) },
                     onNavigateSecureFolders = { navController.navigate(AppRoutes.SecureFolders) },
+                    onNavigateConnectComputer = { navController.navigate(AppRoutes.ConnectComputer) },
+                    userName = user?.name,
+                    userEmail = user?.email,
                     onEnableAppLock = {
                         BiometricAuthenticator.prompt(
                             activity = activity,
@@ -456,6 +478,20 @@ private fun AuthenticatedNavHost(
                     onValueChange = keyViewModel::onValueChange,
                     onSave = { keyViewModel.save { activity.recreate() } },
                     onGenerate = keyViewModel::generate
+                )
+            }
+        }
+        composable(AppRoutes.ConnectComputer) {
+            val connectViewModel = remember { ConnectComputerViewModel(appContainer.pairingRepository, appContainer.cryptoRepository) }
+            val state by connectViewModel.state.collectAsState()
+            Shell(MainSection.Settings, navigateMessages, navigateGallery, navigateFiles, showBottomNav = false) {
+                ConnectComputerScreen(
+                    state = state,
+                    onBack = { navController.popBackStack() },
+                    onCodeChange = connectViewModel::onCodeChange,
+                    onConnect = connectViewModel::connect,
+                    onConnectAnother = connectViewModel::reset,
+                    onConfigureKey = { navController.navigate(AppRoutes.Key) }
                 )
             }
         }

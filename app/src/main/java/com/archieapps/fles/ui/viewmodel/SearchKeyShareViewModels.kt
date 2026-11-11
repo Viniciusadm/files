@@ -70,6 +70,7 @@ class KeyViewModel(private val cryptoRepository: CryptoRepository) : ViewModel()
                             configured = true,
                             value = "",
                             fingerprint = cryptoRepository.fingerprint(),
+                            storedKey = cryptoRepository.getKey(),
                             loading = false,
                             error = null
                         )
@@ -92,6 +93,7 @@ class KeyViewModel(private val cryptoRepository: CryptoRepository) : ViewModel()
                 it.copy(
                     configured = cryptoRepository.hasKey(),
                     fingerprint = cryptoRepository.fingerprint(),
+                    storedKey = cryptoRepository.getKey(),
                     loading = false,
                     error = null
                 )
@@ -105,7 +107,8 @@ data class KeyUiState(
     val configured: Boolean = false,
     val fingerprint: String? = null,
     val loading: Boolean = false,
-    val error: String? = null
+    val error: String? = null,
+    val storedKey: String? = null
 )
 
 class SecureFoldersViewModel(private val repository: SecureFoldersRepository) : ViewModel() {

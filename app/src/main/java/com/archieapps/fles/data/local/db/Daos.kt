@@ -15,6 +15,9 @@ interface UserDao {
 
     @Query("DELETE FROM users")
     suspend fun clear()
+
+    @Query("SELECT * FROM users ORDER BY updatedAt DESC LIMIT 1")
+    suspend fun current(): UserEntity?
 }
 
 @Dao

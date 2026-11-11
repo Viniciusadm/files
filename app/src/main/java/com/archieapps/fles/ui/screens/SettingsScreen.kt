@@ -21,6 +21,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ChevronRight
+import androidx.compose.material.icons.filled.Computer
 import androidx.compose.material.icons.filled.Fingerprint
 import androidx.compose.material.icons.filled.Key
 import androidx.compose.material.icons.filled.Lock
@@ -58,6 +59,9 @@ fun SettingsScreen(
     onCreateChannel: (String, String, String, Boolean) -> Unit,
     onNavigateKey: () -> Unit,
     onNavigateSecureFolders: () -> Unit,
+    onNavigateConnectComputer: () -> Unit,
+    userName: String?,
+    userEmail: String?,
     onEnableAppLock: () -> Unit,
     onDisableAppLock: () -> Unit,
     onRefreshAppLockAvailability: () -> Unit,
@@ -89,7 +93,13 @@ fun SettingsScreen(
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            ProfileCard()
+            ProfileCard(userName, userEmail)
+            SettingsItem(
+                icon = Icons.Filled.Computer,
+                title = "Conectar computador",
+                subtitle = "Usar seus arquivos no navegador ou no terminal",
+                onClick = onNavigateConnectComputer
+            )
             SettingsItem(
                 icon = Icons.Filled.Add,
                 title = "Nova pasta",
@@ -211,7 +221,7 @@ private fun AppLockDialog(
 }
 
 @Composable
-private fun ProfileCard() {
+private fun ProfileCard(name: String?, email: String?) {
     val colors = FlesTheme.colors
     Surface(
         modifier = Modifier.fillMaxWidth(),
@@ -224,12 +234,12 @@ private fun ProfileCard() {
                 modifier = Modifier.size(48.dp).clip(CircleShape).background(colors.primary),
                 contentAlignment = Alignment.Center
             ) {
-                Text("U", color = colors.primaryForeground, fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
+                Text((name ?: email)?.trim()?.firstOrNull()?.uppercase() ?: "?", color = colors.primaryForeground, fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
             }
             Spacer(Modifier.width(12.dp))
             Column(modifier = Modifier.weight(1f)) {
-                Text("usuario", color = colors.foreground, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
-                Text("usuario@exemplo.com", color = colors.mutedForeground, fontSize = 13.sp)
+                Text(name?.takeIf { it.isNotBlank() } ?: "Sua conta", color = colors.foreground, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+                if (email != null) Text(email, color = colors.mutedForeground, fontSize = 13.sp)
             }
         }
     }

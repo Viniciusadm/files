@@ -158,9 +158,28 @@ interface ApiService {
     @POST("attachments/bulk-move")
     suspend fun bulkMoveAttachments(@Body request: BulkMoveAttachmentsRequest): ApiEnvelope<BulkAttachmentMoveResult>
 
+    @GET("files/pairings/pending")
+    suspend fun pendingPairing(): ApiEnvelope<PairingResponse>
+
+    @POST("files/pairings/{id}/approve")
+    suspend fun approvePairing(@Path("id") id: String, @Body request: ApprovePairingRequest): ApiEnvelope<PairingResponse>
+
     @GET
     suspend fun download(@Url url: String): ResponseBody
 }
+
+data class PairingResponse(
+    val id: String,
+    val publicKey: String,
+    val deviceName: String? = null,
+    val status: String? = null
+)
+
+data class ApprovePairingRequest(
+    val publicKey: String,
+    val iv: String,
+    val ciphertext: String
+)
 
 data class ApiEnvelope<T>(
     val success: Boolean? = null,

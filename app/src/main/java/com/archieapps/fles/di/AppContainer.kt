@@ -16,6 +16,7 @@ import com.archieapps.fles.data.repository.CryptoRepository
 import com.archieapps.fles.data.repository.DownloadCenter
 import com.archieapps.fles.data.repository.FilesRepository
 import com.archieapps.fles.data.repository.MessagesRepository
+import com.archieapps.fles.data.repository.PairingRepository
 import com.archieapps.fles.data.repository.SecureFoldersRepository
 import com.archieapps.fles.sync.NetworkMonitor
 import com.archieapps.fles.sync.SyncEngine
@@ -48,6 +49,7 @@ class AppContainer(context: Context) {
         secureFoldersRepository = secureFoldersRepository,
         cryptoRepository = cryptoRepository
     )
+    val pairingRepository = PairingRepository(apiClient.apiService, cryptoRepository)
     val channelsRepository = ChannelsRepository(
         apiService = apiClient.apiService,
         cryptoRepository = cryptoRepository,

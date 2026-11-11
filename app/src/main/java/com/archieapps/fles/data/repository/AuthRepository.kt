@@ -44,6 +44,11 @@ class AuthRepository(
         return tokenStorage.getToken()
     }
 
+    suspend fun cachedUser(): User? {
+        val user = database.userDao().current() ?: return null
+        return User(id = user.remoteId?.toLongOrNull() ?: 0L, name = user.name, email = user.email)
+    }
+
     suspend fun me(): User {
         val response = apiService.me().requireBody()
         val now = nowMs()

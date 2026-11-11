@@ -1,0 +1,28 @@
+<svg width="512" height="512" viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Paleta de Cores: Azul Moderno (Confiança e Tecnologia) -->
+  <defs>
+    <linearGradient id="main_grad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#3B82F6"/>
+      <stop offset="100%" stop-color="#1D4ED8"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Fundo do Ícone (Arredondado Estilo App Mobile) -->
+  <rect width="512" height="512" rx="112" fill="url(#main_grad)"/>
+
+  <!-- Representação Abstrata da Pasta (Camadas de Armazenamento) -->
+  <!-- Camada de Trás -->
+  <path d="M160 180C160 168.954 168.954 160 180 160H245L275 190H332C343.046 190 352 198.954 352 210V320C352 331.046 343.046 340 332 340H180C168.954 340 160 331.046 160 320V180Z" fill="white" fill-opacity="0.2"/>
+  
+  <!-- Camada Principal (Frente) -->
+  <path d="M160 220C160 208.954 168.954 200 180 200H332C343.046 200 352 208.954 352 220V332C352 354.091 334.091 372 312 372H200C177.909 372 160 354.091 160 332V220Z" fill="white"/>
+
+  <!-- Símbolo de "Conexão/Cloud" Integrado (Minimalista) -->
+  <path d="M256 245C240.536 245 228 257.536 228 273C228 288.464 240.536 301 256 301C271.464 301 284 288.464 284 273C284 257.536 271.464 245 256 245ZM256 257C264.837 257 272 264.163 272 273C272 281.837 264.837 289 256 289C247.163 289 240 281.837 240 273C240 264.163 247.163 257 256 257Z" fill="url(#main_grad)"/>
+  
+  <!-- Elemento de Ponto (Simbolizando o 'Pessoal' ou 'Foco') -->
+  <circle cx="256" cy="273" r="4" fill="url(#main_grad)"/>
+  
+  <!-- Linha de Sincronização Sutil na Base -->
+  <rect x="236" y="325" width="40" height="6" rx="3" fill="url(#main_grad)" fill-opacity="0.3"/>
+</svg>
