@@ -25,7 +25,7 @@ val releaseKeyAlias = localProperties.getProperty("RELEASE_KEY_ALIAS")
 val releaseKeyPassword = localProperties.getProperty("RELEASE_KEY_PASSWORD")
 
 android {
-    namespace = "com.archieapps.fles"
+    namespace = "com.archieapps.relay"
     compileSdk {
         version = release(36) {
             minorApiLevel = 1
@@ -33,11 +33,11 @@ android {
     }
 
     defaultConfig {
-        applicationId = "com.archieapps.fles"
+        applicationId = "com.archieapps.relay"
         minSdk = 25
         targetSdk = 36
-        versionCode = 1
-        versionName = "1.0"
+        versionCode = 2
+        versionName = "1.1"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }

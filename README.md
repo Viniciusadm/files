@@ -114,4 +114,4 @@ Endpoints used, relative to `API_BASE_URL`:
 
 Uploads are sent in 2 MB chunks, in order; the size declared in `POST uploads` is the encrypted size (plain size + 28). `messages/sync` takes the `syncedAt` of the previous call as `since` and also returns deleted messages (with `deletedAt`) so clients can drop them.
 
-The request and response shapes are in [`app/src/main/java/com/archieapps/fles/data/remote`](app/src/main/java/com/archieapps/fles/data/remote) and [`core/src`](core/src).
+The request and response shapes are in [`app/src/main/java/com/archieapps/relay/data/remote`](app/src/main/java/com/archieapps/relay/data/remote) and [`core/src`](core/src).

@@ -1,0 +1,27 @@
+package com.archieapps.relay.data.remote
+
+import com.archieapps.relay.data.local.TokenStorage
+import kotlinx.coroutines.runBlocking
+import okhttp3.Interceptor
+import okhttp3.Response
+
+class AuthInterceptor(private val tokenStorage: TokenStorage) : Interceptor {
+    override fun intercept(chain: Interceptor.Chain): Response {
+        val token = runBlocking { tokenStorage.getToken() }
+
+        val requestBuilder = chain.request()
+            .newBuilder()
+            .header("Accept", "application/json")
+
+        if (!token.isNullOrBlank()) {
+            requestBuilder.header("Authorization", "Bearer $token")
+        }
+
+        val response = chain.proceed(requestBuilder.build())
+        if (response.code == 401) {
+            runBlocking { tokenStorage.clearToken() }
+            SessionEvents.emitUnauthorized()
+        }
+        return response
+    }
+}

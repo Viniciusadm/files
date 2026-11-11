@@ -1,0 +1,226 @@
+package com.archieapps.relay.data.repository
+
+import android.util.Base64
+import com.archieapps.relay.data.local.KeyStorage
+import java.security.MessageDigest
+import java.security.SecureRandom
+import javax.crypto.Cipher
+import javax.crypto.CipherOutputStream
+import javax.crypto.spec.GCMParameterSpec
+import javax.crypto.spec.SecretKeySpec
+import java.io.File
+
+class CryptoRepository(private val keyStorage: KeyStorage) {
+    private val random = SecureRandom()
+
+    suspend fun hasKey(): Boolean {
+        return keyStorage.getKey() != null
+    }
+
+    suspend fun getKey(): String? {
+        return keyStorage.getKey()
+    }
+
+    suspend fun saveKey(value: String) {
+        val trimmed = value.trim()
+        decodeKey(trimmed)
+        keyStorage.setKey(trimmed)
+    }
+
+    suspend fun clearKey() {
+        keyStorage.setKey(null)
+    }
+
+    fun generateKey(): String {
+        val bytes = ByteArray(32)
+        random.nextBytes(bytes)
+        return Base64.encodeToString(bytes, Base64.NO_WRAP)
+    }
+
+    suspend fun fingerprint(): String? {
+        val key = keyStorage.getKey() ?: return null
+        val bytes = decodeKey(key)
+        val hash = MessageDigest.getInstance("SHA-256").digest(bytes)
+        return hash.take(8).joinToString(":") { "%02X".format(it) }
+    }
+
+    suspend fun encryptString(value: String): String {
+        if (value.isBlank()) return value
+        val key = decodeKey(keyStorage.getKey() ?: throw IllegalStateException("Chave E2EE não configurada."))
+        return encryptStringWithKey(value, key, 1)
+    }
+
+    fun encryptStringWithKey(value: String, key: ByteArray, version: Int = 1): String {
+        if (value.isBlank()) return value
+        return encryptEnvelope(value.toByteArray(Charsets.UTF_8), key, version)
+    }
+
+    fun decryptStringWithKey(value: String, key: ByteArray): String {
+        return decryptEnvelope(value, key).toString(Charsets.UTF_8)
+    }
+
+    suspend fun encryptBytesForFile(bytes: ByteArray, fileName: String): EncryptedFile {
+        val key = decodeKey(keyStorage.getKey() ?: throw IllegalStateException("Chave E2EE não configurada."))
+        return encryptBytesForFileWithKey(bytes, fileName, key, encryptString(fileName))
+    }
+
+    fun encryptBytesForFileWithKey(bytes: ByteArray, fileName: String, key: ByteArray, fileNameEnvelope: String): EncryptedFile {
+        val iv = ByteArray(12)
+        random.nextBytes(iv)
+        val cipher = Cipher.getInstance("AES/GCM/NoPadding")
+        cipher.init(Cipher.ENCRYPT_MODE, SecretKeySpec(key, "AES"), GCMParameterSpec(128, iv))
+        val ciphertext = cipher.doFinal(bytes)
+        return EncryptedFile(iv + ciphertext, fileNameEnvelope)
+    }
+
+    suspend fun encryptFileForUpload(input: File, fileName: String, output: File): EncryptedDiskFile {
+        val key = decodeKey(keyStorage.getKey() ?: throw IllegalStateException("Chave E2EE não configurada."))
+        return encryptFileForUploadWithKey(input, key, encryptString(fileName), output)
+    }
+
+    fun encryptFileForUploadWithKey(input: File, key: ByteArray, fileNameEnvelope: String, output: File): EncryptedDiskFile {
+        val iv = ByteArray(12)
+        random.nextBytes(iv)
+        val cipher = Cipher.getInstance("AES/GCM/NoPadding")
+        cipher.init(Cipher.ENCRYPT_MODE, SecretKeySpec(key, "AES"), GCMParameterSpec(128, iv))
+        output.parentFile?.mkdirs()
+        input.inputStream().use { source ->
+            output.outputStream().use { raw ->
+                raw.write(iv)
+                CipherOutputStream(raw, cipher).use { encrypted ->
+                    source.copyTo(encrypted)
+                }
+            }
+        }
+        return EncryptedDiskFile(output, fileNameEnvelope)
+    }
+
+    suspend fun decryptBytesFromFile(combined: ByteArray): ByteArray {
+        if (combined.size < 13) throw IllegalArgumentException("Arquivo criptografado inválido")
+        val key = decodeKey(keyStorage.getKey() ?: throw IllegalStateException("Chave E2EE não configurada."))
+        return decryptBytesFromFileWithKey(combined, key)
+    }
+
+    fun decryptBytesFromFileWithKey(combined: ByteArray, key: ByteArray): ByteArray {
+        if (combined.size < 13) throw IllegalArgumentException("Arquivo criptografado inválido")
+        val iv = combined.copyOfRange(0, 12)
+        val ciphertext = combined.copyOfRange(12, combined.size)
+        val cipher = Cipher.getInstance("AES/GCM/NoPadding")
+        cipher.init(Cipher.DECRYPT_MODE, SecretKeySpec(key, "AES"), GCMParameterSpec(128, iv))
+        return cipher.doFinal(ciphertext)
+    }
+
+    /**
+     * Descriptografa [input] (formato IV(12) + ciphertext+tag) para [output] em
+     * streaming, com memória limitada (blocos de 64 KB). Evita carregar o arquivo
+     * inteiro na RAM — essencial para vídeos grandes. O `doFinal()` no fim verifica
+     * o tag GCM e lança em caso de adulteração/chave errada.
+     */
+    suspend fun decryptFileToFile(input: File, output: File) {
+        val key = decodeKey(keyStorage.getKey() ?: throw IllegalStateException("Chave E2EE não configurada."))
+        decryptFileToFileWithKey(input, output, key)
+    }
+
+    fun decryptFileToFileWithKey(input: File, output: File, key: ByteArray) {
+        if (input.length() < 13) throw IllegalArgumentException("Arquivo criptografado inválido")
+        output.parentFile?.mkdirs()
+        input.inputStream().buffered().use { source ->
+            val iv = ByteArray(12)
+            var ivRead = 0
+            while (ivRead < 12) {
+                val r = source.read(iv, ivRead, 12 - ivRead)
+                if (r < 0) throw IllegalArgumentException("Arquivo criptografado inválido")
+                ivRead += r
+            }
+            val cipher = Cipher.getInstance("AES/GCM/NoPadding")
+            cipher.init(Cipher.DECRYPT_MODE, SecretKeySpec(key, "AES"), GCMParameterSpec(128, iv))
+            output.outputStream().buffered().use { sink ->
+                val buffer = ByteArray(64 * 1024)
+                while (true) {
+                    val n = source.read(buffer)
+                    if (n < 0) break
+                    cipher.update(buffer, 0, n)?.let { sink.write(it) }
+                }
+                cipher.doFinal()?.let { sink.write(it) }
+            }
+        }
+    }
+
+    suspend fun tryDecryptString(value: String?): String {
+        val text = value.orEmpty()
+        if (text.isBlank()) return text
+        if (!looksLikeEnvelope(text)) return text
+        return runCatching { decryptString(text) }.getOrElse { "" }
+    }
+
+    suspend fun tryDecryptStringOrNull(value: String?): String? {
+        if (value == null) return null
+        if (value.isBlank()) return value
+        if (!looksLikeEnvelope(value)) return value
+        return runCatching { decryptString(value) }.getOrNull()
+    }
+
+    fun looksLikeEnvelope(value: String?): Boolean {
+        val text = value?.trim() ?: return false
+        if (!text.startsWith("{") || !text.endsWith("}")) return false
+        return text.contains("\"algorithm\"") &&
+            text.contains("\"iv\"") &&
+            text.contains("\"ciphertext\"")
+    }
+
+    private suspend fun decryptString(value: String): String {
+        val key = decodeKey(keyStorage.getKey() ?: throw IllegalStateException("Chave E2EE não configurada."))
+        return decryptStringWithKey(value, key)
+    }
+
+    fun decodeStoredKey(value: String): ByteArray = decodeKey(value)
+
+    fun encodeBytes(bytes: ByteArray): String = encode(bytes)
+
+    fun decodeBytes(value: String): ByteArray = decode(value)
+
+    fun encryptEnvelope(bytes: ByteArray, key: ByteArray, version: Int = 1): String {
+        val iv = ByteArray(12)
+        random.nextBytes(iv)
+        val cipher = Cipher.getInstance("AES/GCM/NoPadding")
+        cipher.init(Cipher.ENCRYPT_MODE, SecretKeySpec(key, "AES"), GCMParameterSpec(128, iv))
+        val ciphertext = cipher.doFinal(bytes)
+        return "{\"version\":$version,\"algorithm\":\"AES-256-GCM\",\"iv\":\"${encode(iv)}\",\"ciphertext\":\"${encode(ciphertext)}\"}"
+    }
+
+    fun decryptEnvelope(value: String, key: ByteArray): ByteArray {
+        val iv = extractJsonValue(value, "iv") ?: throw IllegalArgumentException("Envelope E2EE inválido")
+        val ciphertext = extractJsonValue(value, "ciphertext") ?: throw IllegalArgumentException("Envelope E2EE inválido")
+        val cipher = Cipher.getInstance("AES/GCM/NoPadding")
+        cipher.init(Cipher.DECRYPT_MODE, SecretKeySpec(key, "AES"), GCMParameterSpec(128, decode(iv)))
+        return cipher.doFinal(decode(ciphertext))
+    }
+
+    private fun decodeKey(value: String): ByteArray {
+        val bytes = decode(value)
+        require(bytes.size == 32) { "A chave precisa ter 32 bytes (AES-256) em base64." }
+        return bytes
+    }
+
+    private fun encode(bytes: ByteArray): String {
+        return Base64.encodeToString(bytes, Base64.NO_WRAP)
+    }
+
+    private fun decode(value: String): ByteArray {
+        return Base64.decode(value, Base64.DEFAULT)
+    }
+
+    private fun extractJsonValue(json: String, key: String): String? {
+        return Regex("\"$key\"\\s*:\\s*\"([^\"]+)\"").find(json)?.groupValues?.getOrNull(1)
+    }
+}
+
+data class EncryptedFile(
+    val bytes: ByteArray,
+    val fileNameEnvelope: String
+)
+
+data class EncryptedDiskFile(
+    val file: File,
+    val fileNameEnvelope: String
+)
